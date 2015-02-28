@@ -293,7 +293,7 @@ static void msm_restart_prepare(const char *cmd)
 				strcmp(cmd, "userrequested")));
 	}
 
-#ifdef CONFIG_QCOM_PRESERVE_MEM
+#ifdef CONFIG_MSM_PRESERVE_MEM
 	need_warm_reset = true;
 #endif
 
