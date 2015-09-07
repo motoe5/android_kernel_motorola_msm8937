@@ -181,7 +181,6 @@ static const hdd_freq_chan_map_t freq_chan_map[] = { {2412, 1}, {2417, 2},
 
 // BEGIN IKSWM-15907, Motorola, w18918
 #define WE_SET_CHANNEL_RANGE 90
-#define WE_SET_IPV6_FILTER_STATE 91
 // END IKSWM-15907, Motorola, w18918
 
 /* Private ioctls and their sub-ioctls */
@@ -5948,13 +5947,13 @@ static int __iw_setint_getnone(struct net_device *dev,
         {
             int startChannel, endChannel;
             if (set_value == 3) {
-                startChannel = 149;
-                endChannel   = 161;
+                startChannel = 153;
+                endChannel   = 165;
             } else if (set_value == 2) {
-                startChannel = 100;
-                endChannel   = 144;
+                startChannel = 104;
+                endChannel   = 140;
             } else if (set_value == 1) {
-                startChannel = 36;
+                startChannel = 40;
                 endChannel   = 64;
             } else {
                 set_value = 0;
