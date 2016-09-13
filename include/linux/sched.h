@@ -1473,6 +1473,9 @@ struct task_struct {
 #ifdef CONFIG_SMP
 	struct llist_node wake_entry;
 	int on_cpu;
+#ifdef CONFIG_THREAD_INFO_IN_TASK
+	unsigned int cpu;	/* current CPU */
+#endif
 	unsigned int wakee_flips;
 	unsigned long wakee_flip_decay_ts;
 	struct task_struct *last_wakee;
@@ -2924,19 +2927,11 @@ static inline struct thread_info *task_thread_info(struct task_struct *task)
 {
 	return &task->thread_info;
 }
-
-/*
- * When accessing the stack of a non-current task that might exit, use
- * try_get_task_stack() instead.  task_stack_page will return a pointer
- * that could get freed out from under you.
- */
 static inline void *task_stack_page(const struct task_struct *task)
 {
 	return task->stack;
 }
-
-#define setup_thread_stack(new, old)	do { } while (0)
-
+#define setup_thread_stack(new,old)	do { } while(0)
 static inline unsigned long *end_of_stack(const struct task_struct *task)
 {
 	return task->stack;
