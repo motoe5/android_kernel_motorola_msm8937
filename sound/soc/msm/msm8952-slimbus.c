@@ -3786,11 +3786,6 @@ static struct snd_soc_dapm_route marley_audio_routes[] = {
 
 	{"AMP Playback", NULL, "OPCLK"},
 	{"AMP Capture", NULL, "OPCLK"},
-
-	{"Slim1 Playback", NULL, "MCLK"},
-	{"Slim1 Capture", NULL, "MCLK"},
-	{"Slim2 Capture", NULL, "MCLK"},
-
 };
 #endif
 
@@ -4244,11 +4239,13 @@ int marley_cs35l35_dai_init(struct snd_soc_pcm_runtime *rtd)
 	int ret;
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
-	struct snd_soc_dai *aif2_dai = rtd->cpu_dai;
+	struct snd_soc_dai *aif_dai = rtd->cpu_dai;
 	struct snd_soc_dai *cs35l35_dai = rtd->codec_dai;
 	struct snd_soc_codec *codec_marley = rtd->cpu_dai->codec;
 
-	ret = snd_soc_dai_set_sysclk(aif2_dai, ARIZONA_CLK_SYSCLK, 0, 0);
+	dev_dbg(codec->dev, "%s\n", __func__);
+
+	ret = snd_soc_dai_set_sysclk(aif_dai, ARIZONA_CLK_SYSCLK, 0, 0);
 	if (ret != 0) {
 		dev_err(codec->dev, "Failed to set SYSCLK %d\n", ret);
 		return ret;
