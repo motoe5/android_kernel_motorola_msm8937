@@ -139,12 +139,12 @@ static int msm_quat_mi2s_bit_format = SNDRV_PCM_FORMAT_S16_LE;
 static int msm_quat_mi2s_sample_rate = SAMPLING_RATE_48KHZ;
 static int msm_quat_mi2s_ch = 2;
 /* Reuse this table for quinary mi2s */
-static int msm_quat_clk_freq_in_hz[5][2] = {
-	{Q6AFE_LPASS_IBIT_CLK_512_KHZ, Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ},
-	{Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ, Q6AFE_LPASS_IBIT_CLK_2_P048_MHZ},
-	{Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ, Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ},
-	{Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ, Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ},
-	{Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ, Q6AFE_LPASS_IBIT_CLK_12_P288_MHZ}
+static int msm_quat_clk_freq_in_hz[5][3] = {
+	{Q6AFE_LPASS_IBIT_CLK_512_KHZ, Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ, Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ},
+	{Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ, Q6AFE_LPASS_IBIT_CLK_2_P048_MHZ, Q6AFE_LPASS_IBIT_CLK_2_P048_MHZ},
+	{Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ, Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ, Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ},
+	{Q6AFE_LPASS_IBIT_CLK_3_P072_MHZ, Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ, Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ},
+	{Q6AFE_LPASS_IBIT_CLK_6_P144_MHZ, Q6AFE_LPASS_IBIT_CLK_12_P288_MHZ, Q6AFE_LPASS_IBIT_CLK_12_P288_MHZ}
 };
 
 static int msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S16_LE;
@@ -775,166 +775,6 @@ static int msm_quat_mi2s_ch_get(struct snd_kcontrol *kcontrol,
 	pr_debug("%s: msm_quat_mi2s_ch  = %d\n", __func__,
 		msm_quat_mi2s_ch);
 	switch (msm_quat_mi2s_ch) {
-	case 1:
-		ucontrol->value.integer.value[0] = 0;
-		break;
-	case 2:
-		ucontrol->value.integer.value[0] = 1;
-		break;
-	case 4:
-		ucontrol->value.integer.value[0] = 2;
-		break;
-	default:
-		ucontrol->value.integer.value[0] = 1;
-		break;
-	}
-	return 0;
-}
-
-static int quin_mi2s_get_rate(void)
-{
-	int value;
-
-	switch (msm_quin_mi2s_sample_rate) {
-	case SAMPLING_RATE_16KHZ:
-		value = 0;
-		break;
-	case SAMPLING_RATE_32KHZ:
-		value = 1;
-		break;
-	case SAMPLING_RATE_48KHZ:
-		value = 2;
-		break;
-	case SAMPLING_RATE_96KHZ:
-		value = 3;
-		break;
-	case SAMPLING_RATE_192KHZ:
-		value = 4;
-		break;
-	default:
-		value = 2;
-		break;
-	}
-	return value;
-}
-
-static int msm_quin_mi2s_rate_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	pr_debug("%s: msm_quin_mi2s_sample_rate  = %d\n", __func__,
-		 msm_quin_mi2s_sample_rate);
-	ucontrol->value.integer.value[0] = quin_mi2s_get_rate();
-	return 0;
-}
-
-static int msm_quin_mi2s_rate_put(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	switch (ucontrol->value.integer.value[0]) {
-	case 0:
-		msm_quin_mi2s_sample_rate = SAMPLING_RATE_16KHZ;
-		break;
-	case 1:
-		msm_quin_mi2s_sample_rate = SAMPLING_RATE_32KHZ;
-		break;
-	case 2:
-		msm_quin_mi2s_sample_rate = SAMPLING_RATE_48KHZ;
-		break;
-	case 3:
-		msm_quin_mi2s_sample_rate = SAMPLING_RATE_96KHZ;
-		break;
-	case 4:
-		msm_quin_mi2s_sample_rate = SAMPLING_RATE_192KHZ;
-		break;
-	default:
-		msm_quin_mi2s_sample_rate = SAMPLING_RATE_48KHZ;
-		break;
-	}
-	pr_debug("%s: msm_quin_mi2s_sample_rate  = %d\n", __func__,
-		 msm_quin_mi2s_sample_rate);
-	return 0;
-}
-
-static int quin_mi2s_get_format(void)
-{
-	int value;
-
-	switch (msm_quin_mi2s_bit_format) {
-	case SNDRV_PCM_FORMAT_S16_LE:
-		value = 0;
-		break;
-	case SNDRV_PCM_FORMAT_S24_LE:
-		value = 1;
-		break;
-	case SNDRV_PCM_FORMAT_S32_LE:
-		value = 2;
-		break;
-	default:
-		value = 0;
-		break;
-	}
-	return value;
-}
-
-static int msm_quin_mi2s_format_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	pr_debug("%s: msm_quin_mi2s_bit_format  = %d\n", __func__,
-		 msm_quin_mi2s_bit_format);
-	ucontrol->value.integer.value[0] = quin_mi2s_get_format();
-	return 0;
-}
-
-static int msm_quin_mi2s_format_put(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	switch (ucontrol->value.integer.value[0]) {
-	case 0:
-		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S16_LE;
-		break;
-	case 1:
-		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S24_LE;
-		break;
-	case 2:
-		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S32_LE;
-		break;
-	default:
-		msm_quin_mi2s_bit_format = SNDRV_PCM_FORMAT_S16_LE;
-		break;
-	}
-	pr_debug("%s: msm_quin_mi2s_bit_format  = %d\n", __func__,
-		 msm_quin_mi2s_bit_format);
-	return 0;
-}
-
-static int msm_quin_mi2s_ch_put(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	switch (ucontrol->value.integer.value[0]) {
-	case 0:
-		msm_quin_mi2s_ch = 1;
-		break;
-	case 1:
-		msm_quin_mi2s_ch = 2;
-		break;
-	case 2:
-		msm_quin_mi2s_ch = 4;
-		break;
-	default:
-		msm_quin_mi2s_ch = 2;
-		break;
-	}
-	pr_debug("%s: msm_quin_mi2s_ch = %d\n", __func__,
-		msm_quin_mi2s_ch);
-	return 0;
-}
-
-static int msm_quin_mi2s_ch_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	pr_debug("%s: msm_quin_mi2s_ch  = %d\n", __func__,
-		msm_quin_mi2s_ch);
-	switch (msm_quin_mi2s_ch) {
 	case 1:
 		ucontrol->value.integer.value[0] = 0;
 		break;
@@ -2105,16 +1945,16 @@ static const struct soc_enum msm_snd_enum[] = {
 				tdm_sample_rate_text),
 };
 
-static char const *msm_mi2s_ch_text[] = {"One", "Two", "Four"};
+static char const *msm_quat_mi2s_ch_text[] = {"One", "Two", "Four"};
 
 static const char *const msm_mi2s_rate_text[] = {"KHZ_16", "KHZ_32",
 			"KHZ_48", "KHZ_96", "KHZ_192"};
-static const char *const msm_mi2s_format_text[] = {"S16_LE", "S24_LE", "S32_LE"};
+static const char *const msm_quat_mi2s_format_text[] = {"S16_LE", "S24_LE", "S32_LE"};
 
-static const struct soc_enum msm8996_mi2s_enum[] = {
-		SOC_ENUM_SINGLE_EXT(5, msm_mi2s_rate_text),
-		SOC_ENUM_SINGLE_EXT(3, msm_mi2s_format_text),
-		SOC_ENUM_SINGLE_EXT(3, msm_mi2s_ch_text),
+static const struct soc_enum msm8996_quat_mi2s_enum[] = {
+		SOC_ENUM_SINGLE_EXT(5, msm_quat_mi2s_rate_text),
+		SOC_ENUM_SINGLE_EXT(3, msm_quat_mi2s_format_text),
+		SOC_ENUM_SINGLE_EXT(3, msm_quat_mi2s_ch_text),
 };
 
 static char const *msm_quin_mi2s_ch_text[] = {"One", "Two"};
