@@ -4456,6 +4456,7 @@ static int msm8952_asoc_machine_probe(struct platform_device *pdev)
 			ret);
 		goto err;
 	}
+	aov_trigger_init();
 #endif
 	ret = msm8952_populate_dai_link_component_of_node(card);
 	if (ret) {
