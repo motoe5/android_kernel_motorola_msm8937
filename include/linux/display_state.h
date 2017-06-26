@@ -1,7 +1,6 @@
 /*
  * include/linux/display_state.h
  *
- * Copyright (c) 2016 Francisco Franco
  * franciscofranco.1990@gmail.com
  *
  * This program is free software; you can redistribute it and/or modify
