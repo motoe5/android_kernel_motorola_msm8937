@@ -55,6 +55,10 @@ bool is_display_on()
 	return display_on;
 }
 
+#ifdef CONFIG_LAZYPLUG
+extern void lazyplug_enter_lazy(bool enter, bool video);
+#endif
+
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
 	if (ctrl->pwm_pmi)
@@ -1101,6 +1105,9 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	}
 
 	display_on = true;
+#ifdef CONFIG_LAZYPLUG
+	lazyplug_enter_lazy(false, false);
+#endif
 
 	pinfo = &pdata->panel_info;
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
@@ -1298,6 +1305,9 @@ static int mdss_dsi_panel_off(struct mdss_panel_data *pdata)
 	panel_notify(PANEL_EVENT_DISPLAY_OFF, pinfo);
 
 	display_on = false;
+#ifdef CONFIG_LAZYPLUG
+	lazyplug_enter_lazy(true, false);
+#endif
 
 end:
 	/* clear idle state */
