@@ -479,6 +479,7 @@ struct sps_bam_props {
 
 	bool constrained_logging;
 	u32 logging_number;
+
 };
 
 /**
