@@ -44,7 +44,7 @@ qcom,mdss-dsi-on-command = [
 qcom,mdss-dsi-off-command = [
 	05 01 00 00 5a 00 02 28 00
 	05 01 00 00 14 00 02 10 00
-	39 00 00 00 00 00 02 04 5A
+	39 01 00 00 00 00 02 04 5A
 	39 01 00 00 96 00 02 05 5A];
 
 qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
@@ -89,6 +89,7 @@ qcom,mdss-dsi-bllp-power-mode;
 qcom,mdss-dsi-hfp-power-mode;
 qcom,mdss-panel-off-rst-disable;
 qcom,mdss-dsi-fw-upgrade-interrupt-disable;
+qcom,mdss-dsi-off-reset-disable;
 qcom,mdss-dsi-lp11-init;
 qcom,mdss-dsi-tx-eot-append;
 qcom,mdss-dsi-dma-trigger = "trigger_sw";
