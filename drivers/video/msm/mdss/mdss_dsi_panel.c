@@ -593,6 +593,10 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			gpio_set_value((ctrl_pdata->rst_gpio), 0);
 		if (gpio_is_valid(pinfo->external_rst_gpio))
 			gpio_free(pinfo->external_rst_gpio);
+		if (!pinfo->rst_disable) {
+			gpio_set_value((ctrl_pdata->rst_gpio), 0);
+			pr_debug("%s:reset gpio down\n", __func__);
+		}
 		gpio_free(ctrl_pdata->rst_gpio);
 		if (gpio_is_valid(ctrl_pdata->mode_gpio))
 			gpio_free(ctrl_pdata->mode_gpio);
@@ -3243,6 +3247,8 @@ static int mdss_panel_parse_dt(struct device_node *np,
 					"qcom,mdss-dsi-fw-upgrade-interrupt-disable");
 	pinfo->panel_reg_read_lp_enable = of_property_read_bool(np,
 					"qcom,mdss-panel-reg-read-lp-enable");
+	pinfo->rst_disable = of_property_read_bool(np,
+					"qcom,mdss-dsi-off-reset-disable");
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-init-delay-us", &tmp);
 	pinfo->mipi.init_delay = (!rc ? tmp : 0);
 
