@@ -1496,6 +1496,15 @@ static int abov_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	LOG_INFO("abov_probe()\n");
 
+	/* detect if abov exist or not */
+	ret = abov_detect(client);
+	if (ret == UNKONOW_MODE)
+		return -ENODEV;
+	else if (ret == BOOTLOADER_MODE) {
+		LOG_INFO("abov enter boot mode\n");
+		isForceUpdate = true;
+	}
+
 	pplatData = kzalloc(sizeof(pplatData), GFP_KERNEL);
 	if (!pplatData) {
 		LOG_DBG("platform data is required!\n");
@@ -1723,6 +1732,11 @@ static int abov_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 		abovXX_sar_init(this);
 
+		this->loading_fw = false;
+		this->fw_update_work.force_update = isForceUpdate;
+		INIT_WORK(&this->fw_update_work.worker, capsense_update_work);
+		schedule_work(&this->fw_update_work.worker);
+
 		write_register(this, ABOV_CTRL_MODE_RET, 0x02);
 		mEnabled = 0;
 
@@ -1745,12 +1759,6 @@ static int abov_probe(struct i2c_client *client, const struct i2c_device_id *id)
 				goto free_ps_notifier;
 			}
 		}
-
-		this->loading_fw = false;
-		fw_dl_status = 1;
-		this->fw_update_work.force_update = isForceUpdate;
-		INIT_WORK(&this->fw_update_work.worker, capsense_update_work);
-		schedule_work(&this->fw_update_work.worker);
 
 #if defined(CONFIG_FB)
 		INIT_WORK(&this->fb_notify_work, fb_notify_resume_work);
