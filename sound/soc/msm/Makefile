@@ -56,3 +56,5 @@ obj-$(CONFIG_SND_SOC_OPALUM) += ospl2xx.o
 
 # for tas2560 dsp algo controls
 obj-$(CONFIG_SND_SOC_TAS2560) += tas2560-algo.o
+
+subdir-ccflags-y := $(call cc-disable-warning, strlcpy-strlcat-size)
