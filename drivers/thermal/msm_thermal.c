@@ -219,6 +219,8 @@ static LIST_HEAD(devices_list);
 static LIST_HEAD(thresholds_list);
 static int mitigation = 1;
 
+bool mitigation_thermal_core_control __read_mostly = false;
+
 enum thermal_threshold {
 	HOTPLUG_THRESHOLD_HIGH,
 	HOTPLUG_THRESHOLD_LOW,
@@ -3714,6 +3716,12 @@ static void check_temp(struct work_struct *work)
 		goto reschedule;
 	}
 	do_core_control(temp);
+
+	if (temp >= msm_thermal_info.core_limit_temp_degC)
+		mitigation_thermal_core_control = true;
+	else
+		mitigation_thermal_core_control = false;
+
 	do_vdd_mx();
 	do_therm_dynamic_sampling();
 	do_psm();
