@@ -1539,10 +1539,11 @@ int fts_upgrade_bin(struct i2c_client *client, char *fw_name, bool force)
 		}
 		fts_fwupg_upgrade(client , upg);
 		/*
-		if (upg->func->upgrade)
+		if (upg->func->upgrade) {
 			ret = upg->func->upgrade(client, fw_file_buf, fw_file_len);
 		else
 			FTS_INFO("[UPGRADE]upgrade function is null, no upgrade\n");
+		}
 		*/
 	}
 
