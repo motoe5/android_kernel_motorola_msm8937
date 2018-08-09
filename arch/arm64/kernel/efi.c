@@ -345,6 +345,9 @@ static void efi_set_pgd(struct mm_struct *mm)
 		if (mm != current->active_mm) {
 			/*
 			 * Update the current thread's saved ttbr0 since it is
+			 * restored as part of a return from exception. Set
+			 * the hardware TTBR0_EL1 using cpu_switch_mm()
+			 * directly to enable potential errata workarounds.
 			 * restored as part of a return from exception. Enable
 			 * access to the valid TTBR0_EL1 and invoke the errata
 			 * workaround directly since there is no return from
@@ -360,7 +363,8 @@ static void efi_set_pgd(struct mm_struct *mm)
 			 * thread's saved ttbr0 corresponding to its active_mm
 			 */
 			uaccess_ttbr0_disable();
-			update_saved_ttbr0(current, current->active_mm);
+			if (current->active_mm != &init_mm)
+				update_saved_ttbr0(current, current->active_mm);
 		}
 	}
 }

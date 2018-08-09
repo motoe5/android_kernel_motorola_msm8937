@@ -477,7 +477,7 @@ extern __must_check long strnlen_user(const char __user *str, long n);
 
 	.macro	uaccess_ttbr0_disable, tmp1, tmp2
 alternative_if_not ARM64_HAS_PAN
-	save_and_disable_irq \tmp2		// avoid preemption
+	save_and_disable_irq \tmp2		/* avoid preemption */
 	__uaccess_ttbr0_disable \tmp1
 	restore_irq \tmp2
 alternative_else_nop_endif
