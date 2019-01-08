@@ -1377,7 +1377,7 @@ static ssize_t iommu_debug_atos_read(struct file *file, char __user *ubuf,
 		snprintf(buf, 100, "%pa\n", &phys);
 	}
 
-	buflen = min(count, strlen(buf));
+	buflen = min(count, strlen(buf)+1);
 	if (copy_to_user(ubuf, buf, buflen)) {
 		pr_err("Couldn't copy_to_user\n");
 		retval = -EFAULT;
