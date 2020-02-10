@@ -1665,7 +1665,7 @@ static void diag_switch_logging_clear_mask(
 		return;
 	}
 	if ((new_mode == DIAG_USB_MODE) && diag_mask_clear_param)
-		diag_clear_masks(pid);
+		diag_clear_masks(session_info);
 
 }
 
