@@ -42,9 +42,6 @@
 /* [HACK] Load sound struct based on socId */
 #include <soc/qcom/socinfo.h>
 #define IS_MSM8940 (313)
-static bool get_soc(void){
-	return (IS_MSM8940 == socinfo_get_id()) ? true : false;
-}
 
 #define DRV_NAME "msm8952-asoc-wcd"
 
@@ -1943,8 +1940,7 @@ static int cs35l35_dai_init(struct snd_soc_pcm_runtime *rtd)
 static int tas2560_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret = 0;
-	const bool rhannah = get_soc();
-	if(rhannah)
+	if(IS_MSM8940 == socinfo_get_id())
 	ret = tas2560_algo_routing_init(rtd);
 	return ret;
 }
@@ -4438,16 +4434,15 @@ int msm8952_init_wsa_switch_supply(struct platform_device *pdev,
 static struct snd_soc_card *msm8952_populate_sndcard_dailinks(
 						struct device *dev)
 {
-	const bool rhannah = get_soc();
 	struct snd_soc_card *card;
 	struct snd_soc_dai_link *dailink;
         int len1;
-	if (!rhannah)
+	if (!(IS_MSM8940 == socinfo_get_id()))
 		card = &bear_card;
 	else
 		card = &bear_card_hax;
 	card->name = dev_name(dev);
-	if(!rhannah){
+	if(!(IS_MSM8940 == socinfo_get_id())){
 		len1 = ARRAY_SIZE(msm8952_dai);
 		memcpy(msm8952_dai_links, msm8952_dai, sizeof(msm8952_dai));
 		dailink = msm8952_dai_links;
@@ -4466,7 +4461,7 @@ static struct snd_soc_card *msm8952_populate_sndcard_dailinks(
 	} else {
 		dev_dbg(dev, "%s(): No hdmi dba present, add quin dai\n",
 				__func__);
-		if (!rhannah){
+		if (!(IS_MSM8940 == socinfo_get_id())){
 		memcpy(dailink + len1, msm8952_quin_dai_link,
 				sizeof(msm8952_quin_dai_link));
 		len1 += ARRAY_SIZE(msm8952_quin_dai_link);
@@ -4507,7 +4502,6 @@ static int msm8952_asoc_machine_probe(struct platform_device *pdev)
 	int ret, id, i, val;
 	struct resource	*muxsel;
 	char *temp_str = NULL;
-	const bool rhannah = get_soc();
 
 	pdata = devm_kzalloc(&pdev->dev,
 			sizeof(struct msm8916_asoc_mach_data), GFP_KERNEL);
@@ -4600,7 +4594,7 @@ parse_mclk_freq:
 			ret = -EPROBE_DEFER;
 			goto err;
 		} else if (wsa881x_get_presence_count() == num_strings) {
-			if(!rhannah){
+			if(!(IS_MSM8940 == socinfo_get_id())){
 			bear_card.aux_dev = msm8952_aux_dev;
 			bear_card.num_aux_devs = num_strings;
 			bear_card.codec_conf = msm8952_codec_conf;
@@ -4809,7 +4803,7 @@ err:
 		iounmap(pdata->vaddr_gpio_mux_pcm_ctl);
 	if (pdata->vaddr_gpio_mux_quin_ctl)
 		iounmap(pdata->vaddr_gpio_mux_quin_ctl);
-	if (!rhannah){
+	if (!(IS_MSM8940 == socinfo_get_id())){
 	if (bear_card.num_aux_devs > 0) {
 		for (i = 0; i < bear_card.num_aux_devs; i++) {
 			kfree(msm8952_aux_dev[i].codec_name);
@@ -4838,7 +4832,6 @@ static int msm8952_asoc_machine_remove(struct platform_device *pdev)
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	struct msm8916_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
 	int i;
-	const bool rhannah = get_soc();
 
 	if (pdata->vaddr_gpio_mux_spkr_ctl)
 		iounmap(pdata->vaddr_gpio_mux_spkr_ctl);
@@ -4848,7 +4841,7 @@ static int msm8952_asoc_machine_remove(struct platform_device *pdev)
 		iounmap(pdata->vaddr_gpio_mux_pcm_ctl);
 	if (pdata->vaddr_gpio_mux_quin_ctl)
 		iounmap(pdata->vaddr_gpio_mux_quin_ctl);
-	if (!rhannah){
+	if (!(IS_MSM8940 == socinfo_get_id())){
 	if (bear_card.num_aux_devs > 0) {
 		for (i = 0; i < bear_card.num_aux_devs; i++) {
 			kfree(msm8952_aux_dev[i].codec_name);
