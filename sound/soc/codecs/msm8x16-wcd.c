@@ -585,9 +585,15 @@ static int msm8x16_mbhc_map_btn_code_to_num(struct snd_soc_codec *codec)
 	case 7:
 		btn = 3;
 		break;
+
+	/* we only support 4 button of headset, and in India, there
+	 * is a headset, when insert to phone,it will keep report
+	 * btn_4 event. so now do not report this btn event now
+	 * for workaround. And if we support 5 btn in the future,
+	 * revert it.
 	case 15:
 		btn = 4;
-		break;
+		break;*/
 	default:
 		btn = -EINVAL;
 		break;
@@ -1443,6 +1449,9 @@ static void msm8x16_wcd_boost_on(struct snd_soc_codec *codec)
 			0x40, 0x40);
 		usleep_range(500, 510);
 	}
+
+	if (msm8x16_wcd->boost_pdm_clk)
+		snd_soc_write(codec, MSM8X16_WCD_A_ANALOG_BOOST_TEST_2, 0x4);
 }
 
 static void msm8x16_wcd_boost_off(struct snd_soc_codec *codec)
@@ -1683,6 +1692,12 @@ static void msm8x16_wcd_dt_parse_boost_info(struct snd_soc_codec *codec)
 		snd_soc_codec_get_drvdata(codec);
 	const char *prop_name = "qcom,cdc-boost-voltage";
 	int boost_voltage, ret;
+
+	msm8x16_wcd_priv->boost_pdm_clk =
+		of_property_read_bool(codec->dev->of_node,
+			"qcom,cdc-boost-pdm-clk");
+	dev_info(codec->dev, "Boost clk source: %s\n",
+		msm8x16_wcd_priv->boost_pdm_clk ? "pdm_clk" : "default");
 
 	ret = of_property_read_u32(codec->dev->of_node, prop_name,
 			&boost_voltage);
@@ -3597,7 +3612,7 @@ static int msm8x16_wcd_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 			snd_soc_update_bits(codec, micb_int_reg, 0x08, 0x08);
 			msm8x16_notifier_call(codec,
 					WCD_EVENT_POST_MICBIAS_2_ON);
-		} else if (strnstr(w->name, internal3_text, 30)) {
+		} else if (strnstr(w->name, internal3_text, strlen(w->name))) {
 			snd_soc_update_bits(codec, micb_int_reg, 0x01, 0x01);
 		} else if (strnstr(w->name, external2_text, strlen(w->name))) {
 			msm8x16_notifier_call(codec,
@@ -3610,7 +3625,7 @@ static int msm8x16_wcd_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 		} else if (strnstr(w->name, internal2_text, strlen(w->name))) {
 			msm8x16_notifier_call(codec,
 					WCD_EVENT_POST_MICBIAS_2_OFF);
-		} else if (strnstr(w->name, internal3_text, 30)) {
+		} else if (strnstr(w->name, internal3_text, strlen(w->name))) {
 			snd_soc_update_bits(codec, micb_int_reg, 0x2, 0x0);
 		} else if (strnstr(w->name, external2_text, strlen(w->name))) {
 			/*
@@ -4114,7 +4129,7 @@ void wcd_imped_config(struct snd_soc_codec *codec,
 		case CAJON:
 		case CAJON_2_0:
 		case DIANGU:
-			if (value >= 13) {
+			if (value > 36) {
 				snd_soc_update_bits(codec,
 					MSM8X16_WCD_A_ANALOG_RX_EAR_CTL,
 					0x20, 0x20);
