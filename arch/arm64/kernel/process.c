@@ -43,6 +43,10 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/personality.h>
 #include <linux/notifier.h>
+#ifdef CONFIG_THREAD_INFO_IN_TASK
+#include <linux/percpu.h>
+#endif
+#include <linux/vmalloc.h>
 
 #include <asm/alternative.h>
 #include <asm/compat.h>
@@ -259,6 +263,58 @@ void show_regs(struct pt_regs * regs)
 	__show_regs(regs);
 }
 
+#ifdef CONFIG_ARCH_THREAD_INFO_ALLOCATOR
+
+struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
+						  int node)
+{
+	struct page *page = alloc_kmem_pages_node(node, (THREADINFO_GFP |
+			__GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL,
+			THREAD_SIZE_ORDER);
+	if (page)
+		return page_address(page);
+	else
+		return __vmalloc_node_range(THREAD_SIZE, THREAD_SIZE,
+			VMALLOC_START, VMALLOC_END, THREADINFO_GFP,
+			PAGE_KERNEL, 0, node, __builtin_return_address(0));
+}
+
+void free_thread_info(struct thread_info *ti)
+{
+	if (virt_is_valid_lowmem(ti))
+		free_kmem_pages((unsigned long)ti, THREAD_SIZE_ORDER);
+	else if (is_vmalloc_addr(ti))
+		vfree(ti);
+	else
+		BUG();
+}
+
+void arch_setup_thread_info(struct thread_info *ti)
+{
+	struct vm_struct *vm;
+
+	if (is_vmalloc_addr(ti)) {
+		vm = find_vm_area(ti);
+		if (vm)
+			ti->phys_addr = page_to_phys(vm->pages[0]);
+	}
+}
+
+void arch_account_kernel_stack(struct thread_info *ti, int account)
+{
+	struct zone *zone;
+
+	if (virt_is_valid_lowmem(ti))
+		zone = page_zone(virt_to_page(ti));
+	else if (is_vmalloc_addr(ti))
+		zone = page_zone(phys_to_page(ti->phys_addr));
+	else
+		BUG();
+	mod_zone_page_state(zone, NR_KERNEL_STACK, account);
+}
+
+#endif /* CONFIG_ARCH_THREAD_INFO_ALLOCATOR */
+
 /*
  * Free current thread data structures etc..
  */
@@ -357,25 +413,18 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 
 static void tls_thread_switch(struct task_struct *next)
 {
-	unsigned long tpidr, tpidrro;
-
 	if (!is_compat_task()) {
+		unsigned long tpidr;
 		asm("mrs %0, tpidr_el0" : "=r" (tpidr));
 		current->thread.tp_value = tpidr;
 	}
 
-	if (is_compat_thread(task_thread_info(next))) {
-		tpidr = 0;
-		tpidrro = next->thread.tp_value;
-	} else {
-		tpidr = next->thread.tp_value;
-		tpidrro = 0;
-	}
+	if (is_compat_thread(task_thread_info(next)))
+		write_sysreg(next->thread.tp_value, tpidrro_el0);
+	else if (!arm64_kernel_unmapped_at_el0())
+		write_sysreg(0, tpidrro_el0);
 
-	asm(
-	"	msr	tpidr_el0, %0\n"
-	"	msr	tpidrro_el0, %1"
-	: : "r" (tpidr), "r" (tpidrro));
+	write_sysreg(next->thread.tp_value, tpidr_el0);
 }
 
 /* Restore the UAO state depending on next's addr_limit */
@@ -389,6 +438,22 @@ static void uao_thread_switch(struct task_struct *next)
 	}
 }
 
+#ifdef CONFIG_THREAD_INFO_IN_TASK
+/*
+ * We store our current task in sp_el0, which is clobbered by userspace. Keep a
+ * shadow copy so that we can restore this upon entry from userspace.
+ *
+ * This is *only* for exception entry from EL0, and is not valid until we
+ * __switch_to() a user task.
+ */
+DEFINE_PER_CPU(struct task_struct *, __entry_task);
+
+static void entry_task_switch(struct task_struct *next)
+{
+	__this_cpu_write(__entry_task, next);
+}
+#endif
+
 /*
  * Thread switching.
  */
@@ -401,6 +466,9 @@ struct task_struct *__switch_to(struct task_struct *prev,
 	tls_thread_switch(next);
 	hw_breakpoint_thread_switch(next);
 	contextidr_thread_switch(next);
+#ifdef CONFIG_THREAD_INFO_IN_TASK
+	entry_task_switch(next);
+#endif
 	uao_thread_switch(next);
 
 	/*
@@ -418,9 +486,13 @@ struct task_struct *__switch_to(struct task_struct *prev,
 unsigned long get_wchan(struct task_struct *p)
 {
 	struct stackframe frame;
-	unsigned long stack_page;
+	unsigned long stack_page, ret = 0;
 	int count = 0;
 	if (!p || p == current || p->state == TASK_RUNNING)
+		return 0;
+
+	stack_page = (unsigned long)try_get_task_stack(p);
+	if (!stack_page)
 		return 0;
 
 	frame.fp = thread_saved_fp(p);
@@ -431,17 +503,20 @@ unsigned long get_wchan(struct task_struct *p)
 		if (frame.sp < stack_page ||
 		    frame.sp >= stack_page + THREAD_SIZE ||
 		    unwind_frame(&frame))
-			return 0;
-		if (!in_sched_functions(frame.pc))
-			return frame.pc;
+			goto out;
+		if (!in_sched_functions(frame.pc)) {
+			ret = frame.pc;
+			goto out;
+		}
 	} while (count ++ < 16);
-	return 0;
+
+out:
+	put_task_stack(p);
+	return ret;
 }
 
 unsigned long arch_align_stack(unsigned long sp)
 {
-	if (!(current->personality & ADDR_NO_RANDOMIZE) && randomize_va_space)
-		sp -= get_random_int() & ~PAGE_MASK;
 	return sp & ~0xf;
 }
 
