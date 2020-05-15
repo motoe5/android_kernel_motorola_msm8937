@@ -274,6 +274,7 @@ int sps_bam_enable(struct sps_bam *dev)
 	int result;
 	int rc;
 	int MTIenabled;
+	unsigned long irq_arg = 0;
 
 	/* Is this BAM enabled? */
 	if ((dev->state & BAM_STATE_ENABLED))
@@ -284,6 +285,9 @@ int sps_bam_enable(struct sps_bam *dev)
 		SPS_ERR(dev, "sps:No local access to BAM %pa\n", BAM_ID(dev));
 		return SPS_ERROR;
 	}
+
+	if (dev->props.options & SPS_BAM_OPT_IRQ_NO_SUSPEND)
+		irq_arg = IRQF_NO_SUSPEND;
 
 	/* Set interrupt handling */
 	if ((dev->props.options & SPS_BAM_OPT_IRQ_DISABLED) != 0 ||
@@ -297,14 +301,14 @@ int sps_bam_enable(struct sps_bam *dev)
 			if (dev->props.options & SPS_BAM_RES_CONFIRM) {
 				result = request_irq(dev->props.irq,
 					(irq_handler_t) bam_isr,
-					IRQF_TRIGGER_RISING, "sps", dev);
+					(IRQF_TRIGGER_RISING | irq_arg), "sps", dev);
 				SPS_DBG3(dev,
 					"sps:BAM %pa uses edge for IRQ# %d\n",
 					BAM_ID(dev), dev->props.irq);
 			} else {
 				result = request_irq(dev->props.irq,
 					(irq_handler_t) bam_isr,
-					IRQF_TRIGGER_HIGH, "sps", dev);
+					(IRQF_TRIGGER_HIGH | irq_arg), "sps", dev);
 				SPS_DBG3(dev,
 					"sps:BAM %pa uses level for IRQ# %d\n",
 					BAM_ID(dev), dev->props.irq);
@@ -819,6 +823,7 @@ int sps_bam_pipe_connect(struct sps_pipe *bam_pipe,
 	void *desc_buf = NULL;
 	u32 pipe_index;
 	int result;
+	unsigned long flags = 0;
 
 	/* Clear the client pipe state and hw init struct */
 	pipe_clear(bam_pipe);
@@ -1054,6 +1059,7 @@ int sps_bam_pipe_connect(struct sps_pipe *bam_pipe,
 	}
 
 	/* Indicate initialization is complete */
+	spin_lock_irqsave(&dev->isr_lock, flags);
 	dev->pipes[pipe_index] = bam_pipe;
 	dev->pipe_active_mask |= 1UL << pipe_index;
 	list_add_tail(&bam_pipe->list, &dev->pipes_q);
@@ -1064,6 +1070,7 @@ int sps_bam_pipe_connect(struct sps_pipe *bam_pipe,
 		bam_pipe->pipe_index_mask, dev->pipe_active_mask);
 
 	bam_pipe->state |= BAM_STATE_INIT;
+	spin_unlock_irqrestore(&dev->isr_lock, flags);
 	result = 0;
 exit_err:
 	if (result) {
