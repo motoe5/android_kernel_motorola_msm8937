@@ -3249,8 +3249,6 @@ static int mdss_panel_parse_dt(struct device_node *np,
 					"qcom,mdss-panel-reg-read-lp-enable");
 	pinfo->rst_disable = of_property_read_bool(np,
 					"qcom,mdss-dsi-off-reset-disable");
-	pinfo->panel_reg_read_lp_enable = of_property_read_bool(np,
-					"qcom,mdss-panel-reg-read-lp-enable");
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-init-delay-us", &tmp);
 	pinfo->mipi.init_delay = (!rc ? tmp : 0);
 

@@ -719,7 +719,6 @@ struct mdss_panel_info {
 	bool panel_off_rst_disable;
 	bool panel_reg_read_lp_enable;
 	bool rst_disable;        /*add xinjunjie at 20180312*/
-	bool panel_reg_read_lp_enable;
 	u32 vic; /* video identification code */
 	struct mdss_rect roi;
 	int pwm_pmic_gpio;
