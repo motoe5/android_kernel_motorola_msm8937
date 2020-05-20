@@ -2255,6 +2255,12 @@ static int dwc3_msm_suspend(struct dwc3_msm *mdwc)
 		return -EBUSY;
 	}
 
+	if (!mdwc->in_host_mode && (mdwc->vbus_active && !mdwc->suspend)) {
+		dev_dbg(mdwc->dev,
+			"Received wakeup event before the core suspend\n");
+		return -EBUSY;
+	}
+
 	ret = dwc3_msm_prepare_suspend(mdwc);
 	if (ret) {
 		dbg_event(dwc->ctrl_num, 0xFF, "Sus Abrt 3", 0);
@@ -2915,7 +2921,6 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_TYPE:
 		psy->type = val->intval;
-		dbg_event(dwc->ctrl_num, 0xFF, "psy type", val->intval);
 
 		switch (psy->type) {
 		case POWER_SUPPLY_TYPE_USB:
