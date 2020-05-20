@@ -59,11 +59,48 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 #include <linux/usb.h>
 #include <linux/power_supply.h>
 
+
 #define FT_DRIVER_VERSION	0x02
 
 #define FT_META_REGS		3
 #define FT_ONE_TCH_LEN		6
 #define FT_TCH_LEN(x)		(FT_META_REGS + FT_ONE_TCH_LEN * x)
+
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+#define FTS_MAX_POINTS_SUPPORT              10
+#define FTS_ONE_TCH_LEN                     6
+#define FTS_KEY_WIDTH                       50
+
+#define FTS_MAX_ID                          0x0A
+#define FTS_TOUCH_X_H_POS                   3
+#define FTS_TOUCH_X_L_POS                   4
+#define FTS_TOUCH_Y_H_POS                   5
+#define FTS_TOUCH_Y_L_POS                   6
+#define FTS_TOUCH_PRE_POS                   7
+#define FTS_TOUCH_AREA_POS                  8
+#define FTS_TOUCH_POINT_NUM                 2
+#define FTS_TOUCH_EVENT_POS                 3
+#define FTS_TOUCH_ID_POS                    5
+#define FTS_COORDS_ARR_SIZE                 4
+
+#define FTS_TOUCH_DOWN                      0
+#define FTS_TOUCH_UP                        1
+#define FTS_TOUCH_CONTACT                   2
+#define EVENT_DOWN(flag)                    ((FTS_TOUCH_DOWN == flag) || (FTS_TOUCH_CONTACT == flag))
+#define EVENT_UP(flag)                      (FTS_TOUCH_UP == flag)
+#define EVENT_NO_DOWN(data)                 (!data->point_num)
+#define KEY_EN(data)                        (data->pdata->have_key)
+#define TOUCH_IS_KEY(y, key_y)              (y == key_y)
+#define TOUCH_IN_RANGE(val, key_val, half)  ((val > (key_val - half)) && (val < (key_val + half)))
+#define TOUCH_IN_KEY(x, key_x)              TOUCH_IN_RANGE(x, key_x, FTS_KEY_WIDTH)
+#define kfree_safe(pbuf) do { \
+		if (pbuf) { \
+			kfree(pbuf); \
+			pbuf = NULL; \
+		} \
+	} while (0)
+#endif
+
 
 #define FT_PRESS		0x7F
 #define FT_MAX_ID		0x0F
@@ -188,7 +225,7 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *data);
 
 #define FT_MAX_WR_BUF		10
 #define FT_MAX_RD_BUF		3
-#define FT_FW_PKT_LEN		128
+#define FT_FW_PKT_LEN		32
 #define FT_FW_PKT_META_LEN	6
 #define FT_FW_PKT_DLY_MS	20
 #define FT_FW_LAST_PKT		0x6ffa
@@ -272,7 +309,8 @@ enum {
 	PROC_READ_REGISTER	= 1,
 	PROC_WRITE_REGISTER	= 2,
 	PROC_WRITE_DATA		= 6,
-	PROC_READ_DATA		= 7
+	PROC_READ_DATA		= 7,
+	PROC_HW_RESET		= 11,
 };
 
 enum {
@@ -309,6 +347,17 @@ struct ft5x06_exp_fn_ctrl {
 
 static struct ft5x06_exp_fn_ctrl exp_fn_ctrl;
 
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+struct ts_event {
+    int x; /*x coordinate */
+    int y; /*y coordinate */
+    int p; /* pressure */
+    int flag; /* touch event flag: 0 -- down; 1-- up; 2 -- contact */
+    int id;   /*touch ID */
+    int area;
+};
+#endif
+
 struct ft5x06_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
@@ -328,6 +377,17 @@ struct ft5x06_ts_data {
 	u32 tch_data_len;
 	u8 fw_ver[3];
 	u8 fw_vendor_id;
+	const char *panel_supplier;
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	struct mutex report_mutex;
+	struct ts_event *events;
+	bool key_down;
+	unsigned char *point_buf;
+	int touchs;
+	int point_num;
+	int touch_point;
+	int pnt_buf_size;
+#endif
 	struct kobject *ts_info_kobj;
 #if defined(CONFIG_FB)
 	struct work_struct fb_notify_work;
@@ -884,6 +944,24 @@ static int ft5x06_report_gesture(struct i2c_client *i2c_client,
 }
 #endif
 
+static const char *ft5x06_find_vendor_name(
+	const struct ft5x06_ts_platform_data *pdata, u8 id)
+{
+	int i;
+
+	if (pdata->num_vendor_ids == 0)
+		return NULL;
+
+	for (i = 0; i < pdata->num_vendor_ids; i++)
+		if (id == pdata->vendor_ids[i]) {
+			pr_info("vendor id 0x%02x panel supplier is %s\n",
+				id, pdata->vendor_names[i]);
+			return pdata->vendor_names[i];
+		}
+
+	return NULL;
+}
+
 static void ft5x06_update_fw_vendor_id(struct ft5x06_ts_data *data)
 {
 	struct i2c_client *client = data->client;
@@ -894,6 +972,8 @@ static void ft5x06_update_fw_vendor_id(struct ft5x06_ts_data *data)
 	err = ft5x06_i2c_read(client, &reg_addr, 1, &data->fw_vendor_id, 1);
 	if (err < 0)
 		dev_err(&client->dev, "fw vendor id read failed");
+	data->panel_supplier = ft5x06_find_vendor_name(data->pdata,
+		data->fw_vendor_id);
 }
 
 static void ft5x06_update_fw_ver(struct ft5x06_ts_data *data)
@@ -936,15 +1016,248 @@ static void ft5x06_update_fw_id(struct ft5x06_ts_data *data)
 	dev_info(&client->dev, "Firmware id = 0x%02x%02x\n",
 		data->fw_id[0], data->fw_id[1]);
 }
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+/*****************************************************************************
+ *  Name: fts_release_all_finger
+ *  Brief: report all points' up events, release touch
+ *  Input:
+ *  Output:
+ *  Return:
+ *****************************************************************************/
+static void fts_release_all_finger(struct device *dev)
+{
+	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
+	struct input_dev *input_dev = data->input_dev;
+
+	u32 finger_count = 0;
+
+	mutex_lock(&data->report_mutex);
+
+	for (finger_count = 0; finger_count < data->pdata->max_touch_number; finger_count++) {
+		input_mt_slot(input_dev, finger_count);
+		input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, false);
+	}
+
+	input_report_key(input_dev, BTN_TOUCH, 0);
+	input_sync(input_dev);
+
+	mutex_unlock(&data->report_mutex);
+}
+
+/************************************************************************
+ * Name: fts_input_report_key
+ * Brief: report key event
+ * Input: events info
+ * Output:
+ * Return: return 0 if success
+ ***********************************************************************/
+static int fts_input_report_key(struct ft5x06_ts_data *data, int index)
+{
+	u32 ik;
+	int id = data->events[index].id;
+	int x = data->events[index].x;
+	int y = data->events[index].y;
+	int flag = data->events[index].flag;
+	u32 key_num = data->pdata->key_number;
+
+	if (!KEY_EN(data)) {
+		return -EINVAL;
+	}
+	for (ik = 0; ik < key_num; ik++) {
+		if (TOUCH_IN_KEY(x, data->pdata->key_x_coords[ik])) {
+			if (EVENT_DOWN(flag)) {
+				data->key_down = true;
+				input_report_key(data->input_dev, data->pdata->keys[ik], 1);
+				dev_dbg(&data->client->dev, "Key%d(%d, %d) DOWN!", ik, x, y);
+			} else {
+				data->key_down = false;
+				input_report_key(data->input_dev, data->pdata->keys[ik], 0);
+				dev_dbg(&data->client->dev, "Key%d(%d, %d) Up!", ik, x, y);
+			}
+			return 0;
+		}
+	}
+
+	dev_err(&data->client->dev, "invalid touch for key, [%d](%d, %d)", id, x, y);
+	return -EINVAL;
+}
+
+static int fts_input_report_b(struct ft5x06_ts_data *data)
+{
+	int i = 0;
+	int uppoint = 0;
+	int touchs = 0;
+	bool va_reported = false;
+	u32 max_touch_num = data->pdata->max_touch_number;
+	u32 key_y_coor = data->pdata->key_y_coord;
+	struct ts_event *events = data->events;
+
+	for (i = 0; i < data->touch_point; i++) {
+		if (KEY_EN(data) && TOUCH_IS_KEY(events[i].y, key_y_coor)) {
+			fts_input_report_key(data, i);
+			continue;
+		}
+
+		if (events[i].id >= max_touch_num)
+			break;
+
+		va_reported = true;
+		input_mt_slot(data->input_dev, events[i].id);
+
+		if (EVENT_DOWN(events[i].flag)) {
+			input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, true);
+
+			input_report_abs(data->input_dev, ABS_MT_TOUCH_MAJOR, events[i].area);
+			input_report_abs(data->input_dev, ABS_MT_POSITION_X, events[i].x);
+			input_report_abs(data->input_dev, ABS_MT_POSITION_Y, events[i].y);
+
+			touchs |= BIT(events[i].id);
+			data->touchs |= BIT(events[i].id);
+
+			dev_dbg(&data->client->dev, "[B]P%d(%d, %d)[p:%d,tm:%d] DOWN!", events[i].id, events[i].x,
+				events[i].y, events[i].p, events[i].area);
+		} else {
+			uppoint++;
+			input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, false);
+			data->touchs &= ~BIT(events[i].id);
+			dev_dbg(&data->client->dev, "[B]P%d UP!", events[i].id);
+		}
+	}
+
+	if (unlikely(data->touchs ^ touchs)) {
+		for (i = 0; i < max_touch_num; i++)  {
+			if (BIT(i) & (data->touchs ^ touchs)) {
+				dev_dbg(&data->client->dev, "[B]P%d UP!", i);
+				va_reported = true;
+				input_mt_slot(data->input_dev, i);
+				input_mt_report_slot_state(data->input_dev, MT_TOOL_FINGER, false);
+			}
+		}
+	}
+	data->touchs = touchs;
+
+	if (va_reported) {
+		/* touchs==0, there's no point but key */
+		if (EVENT_NO_DOWN(data) || (!touchs)) {
+			dev_dbg(&data->client->dev, "[B]Points All Up!");
+			input_report_key(data->input_dev, BTN_TOUCH, 0);
+		} else {
+			input_report_key(data->input_dev, BTN_TOUCH, 1);
+		}
+	}
+
+	input_sync(data->input_dev);
+	return 0;
+}
+/*****************************************************************************
+*  Name: fts_read_touchdata
+*  Brief:
+*  Input:
+*  Output:
+*  Return: return 0 if succuss
+*****************************************************************************/
+static int fts_read_touchdata(struct ft5x06_ts_data *data)
+{
+	int ret = 0;
+	int i = 0;
+	u8 pointid;
+	int base;
+	struct ts_event *events = data->events;
+	int max_touch_num = data->pdata->max_touch_number;
+	u8 *buf = data->point_buf;
+
+	data->point_num = 0;
+	data->touch_point = 0;
+
+	memset(buf, 0xFF, data->pnt_buf_size);
+	buf[0] = 0x00;
+
+	ret = ft5x06_i2c_read(data->client, buf, 1, buf, data->pnt_buf_size);
+	if (ret < 0) {
+		dev_err(&data->client->dev, "read touchdata failed, ret:%d", ret);
+		return ret;
+	}
+	data->point_num = buf[FTS_TOUCH_POINT_NUM] & 0x0F;
+
+	#if 0
+	if (data->ic_info.is_incell) {
+		if ((data->point_num == 0x0F) && (buf[1] == 0xFF) && (buf[2] == 0xFF)
+			&& (buf[3] == 0xFF) && (buf[4] == 0xFF) && (buf[5] == 0xFF) && (buf[6] == 0xFF)) {
+			dev_info(&data->client->dev, "touch buff is 0xff, need recovery state");
+			fts_tp_state_recovery(client);
+			return -EIO;
+	    }
+	}
+	#endif
+
+	if (data->point_num > max_touch_num) {
+		dev_info(&data->client->dev, "invalid point_num(%d)", data->point_num);
+		return -EIO;
+	}
+
+	for (i = 0; i < max_touch_num; i++) {
+		base = FTS_ONE_TCH_LEN * i;
+
+		pointid = (buf[FTS_TOUCH_ID_POS + base]) >> 4;
+		if (pointid >= FTS_MAX_ID)
+			break;
+		else if (pointid >= max_touch_num) {
+			dev_err(&data->client->dev, "ID(%d) beyond max_touch_number", pointid);
+			return -EINVAL;
+		}
+
+		data->touch_point++;
+
+		events[i].x = ((buf[FTS_TOUCH_X_H_POS + base] & 0x0F) << 8) +
+					(buf[FTS_TOUCH_X_L_POS + base] & 0xFF);
+		events[i].y = ((buf[FTS_TOUCH_Y_H_POS + base] & 0x0F) << 8) +
+					(buf[FTS_TOUCH_Y_L_POS + base] & 0xFF);
+		events[i].flag = buf[FTS_TOUCH_EVENT_POS + base] >> 6;
+		events[i].id = buf[FTS_TOUCH_ID_POS + base] >> 4;
+		events[i].area = buf[FTS_TOUCH_AREA_POS + base] >> 4;
+		events[i].p =  buf[FTS_TOUCH_PRE_POS + base];
+
+		if (EVENT_DOWN(events[i].flag) && (data->point_num == 0)) {
+			dev_info(&data->client->dev, "abnormal touch data from fw");
+			return -EIO;
+		}
+	}
+	if (data->touch_point == 0) {
+		dev_info(&data->client->dev, "no touch point information");
+		return -EIO;
+	}
+
+	return 0;
+}
+/*****************************************************************************
+*  Name: fts_report_event
+*  Brief:
+*  Input:
+*  Output:
+*  Return:
+*****************************************************************************/
+static void fts_report_event(struct ft5x06_ts_data *data)
+{
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+    fts_input_report_b(data);
+#endif
+}
+#endif
 
 static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 {
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	int ret = 0;
+#endif
 	struct ft5x06_ts_data *data = dev_id;
 	struct input_dev *ip_dev;
+#ifndef CONFIG_TOUCHSCREEN_FT5336
 	int rc, i;
 	u32 id, x, y, status, num_touches;
-	u8 reg, *buf, gesture_is_active;
+	u8 reg;
 	bool update_input = false;
+#endif
+	u8 *buf, gesture_is_active;
 
 	if (!data) {
 		pr_err("%s: Invalid data\n", __func__);
@@ -967,7 +1280,14 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 			return IRQ_HANDLED;
 		}
 	}
-
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	ret = fts_read_touchdata(data);
+	if (ret == 0) {
+		mutex_lock(&data->report_mutex);
+		fts_report_event(data);
+		mutex_unlock(&data->report_mutex);
+	}
+#else
 	/*
 	 * Read touch data start from register FT_REG_DEV_MODE.
 	 * The touch x/y value start from FT_TOUCH_X_H/L_POS and
@@ -1044,7 +1364,7 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 		input_mt_report_pointer_emulation(ip_dev, false);
 		input_sync(ip_dev);
 	}
-
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -1455,6 +1775,10 @@ static int ft5x06_ts_resume(struct device *dev)
 		dev_dbg(dev, "Already in awake state\n");
 		return 0;
 	}
+
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	fts_release_all_finger(dev);
+#endif
 
 	data->flash_enabled = true;
 	ft5x06_secure_touch_stop(data, true);
@@ -2079,6 +2403,167 @@ static int ft5x06_fw_upgrade_start(struct i2c_client *client,
 	return 0;
 }
 
+#define FT6X36_UPGRADE
+
+#ifdef FT6X36_UPGRADE
+#define FTS_REG_UPGRADE2                            0xBC
+#define FTS_FLASH_STATUS_OK_FT6336GU                0xB002
+#define FTS_CMD_FLASH_STATUS                        0x6A
+#define FTS_CMD_FLASH_STATUS_LEN                    2
+#define FTS_RETRIES_WRITE                           100
+#define FTS_RETRIES_DELAY_WRITE                     1
+
+#define BYTE_OFF_0(x)           (u8)((x) & 0xFF)
+#define BYTE_OFF_8(x)           (u8)((x >> 8) & 0xFF)
+#define BYTE_OFF_16(x)          (u8)((x >> 16) & 0xFF)
+#define BYTE_OFF_24(x)          (u8)((x >> 24) & 0xFF)
+
+/************************************************************************
+* Name: fts_ft6336gu_upgrade
+* Brief:
+* Input:
+* Output:
+* Return: return 0 if success, otherwise return error code
+***********************************************************************/
+static int fts_ft6336gu_upgrade(struct i2c_client *client,
+			const u8 *data, u32 data_len)
+{
+	int ret = 0;
+	struct ft5x06_ts_data *ts_data = i2c_get_clientdata(client);
+	struct fw_upgrade_info info = ts_data->pdata->info;
+	u8 w_buf[FT_MAX_WR_BUF] = {0}, r_buf[FT_MAX_RD_BUF] = {0};
+	u8 pkt_buf[FT_FW_PKT_LEN + FT_FW_PKT_META_LEN];
+	int i, j;
+	u32 pkt_num, pkt_len;
+	u8 fw_ecc = 0;
+	u32 remainder = 0;
+	u32 addr = 0;
+	u32 offset = 0;
+	u32 start_addr = 0;
+	u8 cmd[4] = {0};
+	u8 val[FTS_CMD_FLASH_STATUS_LEN] = { 0 };
+	u16 read_status = 0;
+	u16 wr_ok = 0;
+
+	for (i = 0, j = 0; i < FT_UPGRADE_LOOP; i++) {
+		msleep(FT_EARSE_DLY_MS);
+		/* reset - write 0xaa and 0x55 to reset register */
+
+		ft5x0x_write_reg(client, FT_RST_CMD_REG2, FT_UPGRADE_AA);
+		msleep(info.delay_aa);
+
+		ft5x0x_write_reg(client, FT_RST_CMD_REG2, FT_UPGRADE_55);
+		if (i <= (FT_UPGRADE_LOOP / 2))
+			msleep(info.delay_55 + i * 3);
+		else
+			msleep(info.delay_55 - (i - (FT_UPGRADE_LOOP / 2)) * 2);
+
+		/* Enter upgrade mode */
+		w_buf[0] = FT_UPGRADE_55;
+		ft5x06_i2c_write(client, w_buf, 1);
+		usleep_range(FT_55_AA_DLY_NS, FT_55_AA_DLY_NS + 1);
+		w_buf[0] = FT_UPGRADE_AA;
+		ft5x06_i2c_write(client, w_buf, 1);
+
+		/* check READ_ID */
+		msleep(info.delay_readid);
+		w_buf[0] = FT_READ_ID_REG;
+		w_buf[1] = 0x00;
+		w_buf[2] = 0x00;
+		w_buf[3] = 0x00;
+
+		ft5x06_i2c_read(client, w_buf, 4, r_buf, 2);
+
+		if (r_buf[0] != info.upgrade_id_1
+			|| r_buf[1] != info.upgrade_id_2) {
+			dev_err(&client->dev, "Upgrade ID mismatch(%d), IC=0x%x 0x%x, info=0x%x 0x%x\n",
+				i, r_buf[0], r_buf[1],
+				info.upgrade_id_1, info.upgrade_id_2);
+		} else
+			break;
+	}
+
+	if (i >= FT_UPGRADE_LOOP) {
+		dev_err(&client->dev, "Abort upgrade\n");
+		return -EIO;
+	}
+
+	/* erase app and panel paramenter area */
+	w_buf[0] = FT_ERASE_APP_REG;
+	ft5x06_i2c_write(client, w_buf, 1);
+	msleep(info.delay_erase_flash);
+
+	pkt_num = data_len / FT_FW_PKT_LEN;
+	remainder = data_len % FT_FW_PKT_LEN;
+	if (remainder > 0)
+		pkt_num++;
+	pkt_len = FT_FW_PKT_LEN;
+	dev_err(&client->dev, "write fw,num:%d, remainder:%d", pkt_num, remainder);
+
+	pkt_buf[0] = FT_FW_START_REG;
+	for (i = 0; i < pkt_num; i++) {
+		offset = i * FT_FW_PKT_LEN;
+		addr = start_addr + offset;
+		pkt_buf[1] = BYTE_OFF_16(addr);
+		pkt_buf[2] = BYTE_OFF_8(addr);
+		pkt_buf[3] = BYTE_OFF_0(addr);
+
+		/* last packet */
+		if ((i == (pkt_num - 1)) && remainder)
+			pkt_len = remainder;
+
+		pkt_buf[4] = BYTE_OFF_8(pkt_len);
+		pkt_buf[5] = BYTE_OFF_0(pkt_len);
+
+		for (j = 0; j < pkt_len; j++) {
+			pkt_buf[FT_FW_PKT_META_LEN + j] = data[offset + j];
+			fw_ecc ^= pkt_buf[FT_FW_PKT_META_LEN + j];
+		}
+
+		ret = ft5x06_i2c_write(client, pkt_buf, pkt_len + FT_FW_PKT_META_LEN);
+		if (ret < 0) {
+			dev_err(&client->dev, "[UPGRADE]app write fail");
+			return ret;
+		}
+		mdelay(1);
+
+		/* read status */
+		wr_ok = FTS_FLASH_STATUS_OK_FT6336GU + i + 1;
+		for (j = 0; j < FTS_RETRIES_WRITE; j++) {
+			cmd[0] = FTS_CMD_FLASH_STATUS;
+			cmd[1] = 0x00;
+			cmd[2] = 0x00;
+			cmd[3] = 0x00;
+			ret = ft5x06_i2c_read(client, cmd , 4, val, FTS_CMD_FLASH_STATUS_LEN);
+			read_status = (((u16)val[0]) << 8) + val[1];
+
+			if (wr_ok == read_status) {
+			    break;
+			}
+			mdelay(FTS_RETRIES_DELAY_WRITE);
+		}
+	}
+
+	/* verify checksum */
+	w_buf[0] = FT_REG_ECC;
+	ft5x06_i2c_read(client, w_buf, 1, r_buf, 1);
+	if (r_buf[0] != fw_ecc) {
+		dev_err(&client->dev, "ECC error! dev_ecc=%02x fw_ecc=%02x\n",
+					r_buf[0], fw_ecc);
+		return -EIO;
+	}
+
+	/* reset */
+	w_buf[0] = FT_REG_RESET_FW;
+	ft5x06_i2c_write(client, w_buf, 1);
+	msleep(ts_data->pdata->soft_rst_dly);
+
+	dev_info(&client->dev, "Firmware upgrade successful\n");
+
+	return 0;
+}
+#endif
+
 static int ft5x06_fw_upgrade(struct device *dev, bool force)
 {
 	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
@@ -2135,7 +2620,11 @@ static int ft5x06_fw_upgrade(struct device *dev, bool force)
 
 	/* start firmware upgrade */
 	if (FT_FW_CHECK(fw, data)) {
-		rc = ft5x06_fw_upgrade_start(data->client, fw->data, fw->size);
+		if (data->family_id == FT6X36_ID)
+			rc = fts_ft6336gu_upgrade(data->client, fw->data, fw->size);
+		else
+			rc = ft5x06_fw_upgrade_start(data->client, fw->data, fw->size);
+
 		if (rc < 0)
 			dev_err(dev, "update failed (%d). try later...\n", rc);
 		else if (data->pdata->info.auto_cal)
@@ -2498,6 +2987,19 @@ static ssize_t ft5x06_drv_irq_store(struct device *dev,
 }
 static DEVICE_ATTR(drv_irq, 0664, ft5x06_drv_irq_show, ft5x06_drv_irq_store);
 
+static ssize_t ft5x06_panel_supplier_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
+
+	if (data->panel_supplier)
+		return scnprintf(buf, PAGE_SIZE, "%s\n",
+			data->panel_supplier);
+	return 0;
+}
+
+static DEVICE_ATTR(panel_supplier, 0444, ft5x06_panel_supplier_show, NULL);
+
 static ssize_t ts_info_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
@@ -2855,6 +3357,21 @@ static ssize_t ft5x06_proc_write(struct file *filp, const char __user *buff,
 					"%s: write I2C error\n", __func__);
 		}
 		break;
+	case PROC_HW_RESET:
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+		dev_err(&data->client->dev, "tp reset\n");
+		retval = gpio_direction_output(data->pdata->reset_gpio, 0);
+		if (0 == retval) {
+			gpio_set_value_cansleep(data->pdata->reset_gpio, 0);
+			msleep(data->pdata->hard_rst_dly);
+			gpio_set_value_cansleep(data->pdata->reset_gpio, 1);
+			msleep(100);
+		} else {
+			dev_err(&data->client->dev,
+				"set direction for reset gpio failed\n");
+		}
+#endif
+		break;
 	default:
 		dev_err(&data->client->dev,
 				"%s: unsupport opt %d\n",
@@ -3103,6 +3620,11 @@ static int ft5x06_parse_dt(struct device *dev,
 	struct property *prop;
 	u32 temp_val, num_buttons;
 	u32 button_map[MAX_BUTTONS];
+	u32 num_vendor_ids, i;
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	struct ft5x06_ts_data *data = dev_get_drvdata(dev);
+	int ret;
+#endif
 
 	pdata->name = "focaltech";
 	rc = of_property_read_string(np, "focaltech,name", &pdata->name);
@@ -3161,6 +3683,50 @@ static int ft5x06_parse_dt(struct device *dev,
 		pdata->soft_rst_dly = temp_val;
 	else
 		return rc;
+
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	/* key */
+	pdata->have_key = of_property_read_bool(np, "focaltech,have-key");
+	if (pdata->have_key) {
+		ret = of_property_read_u32(np, "focaltech,key-number", &pdata->key_number);
+		if (ret)
+			dev_err(dev, "Key number undefined!\n");
+
+		ret = of_property_read_u32_array(np, "focaltech,keys",
+			pdata->keys, pdata->key_number);
+		if (ret)
+			dev_err(dev, "Keys undefined!\n");
+		else if (pdata->key_number > FTS_MAX_KEYS)
+			pdata->key_number = FTS_MAX_KEYS;
+
+		ret = of_property_read_u32(np, "focaltech,key-y-coord", &pdata->key_y_coord);
+		if (ret)
+			dev_err(dev, "Key Y Coord undefined!\n");
+
+		ret = of_property_read_u32_array(np, "focaltech,key-x-coords",
+			pdata->key_x_coords, pdata->key_number);
+		if (ret)
+			dev_err(dev, "Key X Coords undefined!\n");
+
+		dev_info(&data->client->dev, "VK(%d): (%d, %d, %d), [%d, %d, %d][%d]",
+			pdata->key_number, pdata->keys[0], pdata->keys[1], pdata->keys[2],
+			pdata->key_x_coords[0], pdata->key_x_coords[1], pdata->key_x_coords[2],
+			pdata->key_y_coord);
+	}
+
+	ret = of_property_read_u32(np, "focaltech,max-touch-number", &temp_val);
+	if (0 == ret) {
+		if (temp_val < 2)
+			pdata->max_touch_number = 2;
+		else if (temp_val > FTS_MAX_POINTS_SUPPORT)
+			pdata->max_touch_number = FTS_MAX_POINTS_SUPPORT;
+		else
+			pdata->max_touch_number = temp_val;
+	} else {
+		dev_err(dev, "Unable to get max-touch-number\n");
+		pdata->max_touch_number = FTS_MAX_POINTS_SUPPORT;
+	}
+#endif
 
 	rc = of_property_read_u32(np, "focaltech,num-max-touches", &temp_val);
 	if (!rc)
@@ -3248,6 +3814,31 @@ static int ft5x06_parse_dt(struct device *dev,
 		}
 	}
 
+	num_vendor_ids = of_property_count_elems_of_size(np,
+		"focaltech,vendor_ids", sizeof(u32));
+	if ((num_vendor_ids > 0) && (num_vendor_ids < MAX_PANEL_SUPPLIERS)) {
+		const char *name;
+
+		rc = of_property_read_u32_array(np,
+			"focaltech,vendor_ids", pdata->vendor_ids,
+			num_vendor_ids);
+		if (rc) {
+			dev_err(dev, "Unable to read vendor ids\n");
+			return rc;
+		}
+		prop = of_find_property(np, "focaltech,vendor_names", NULL);
+		if (!prop) {
+			dev_err(dev, "Unable to read vendor names\n");
+			return rc;
+		}
+		for (name = of_prop_next_string(prop, NULL), i = 0;
+			i < num_vendor_ids;
+			name = of_prop_next_string(prop, name), i++)
+			pdata->vendor_names[i] = name;
+
+		pdata->num_vendor_ids = num_vendor_ids;
+	}
+
 	return 0;
 }
 #else
@@ -3300,6 +3891,10 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	u8 reg_value = 0;
 	u8 reg_addr;
 	int err, len, retval, attr_count;
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	int key_num = 0;
+	int point_num;
+#endif
 
 	if (client->dev.of_node) {
 		pdata = devm_kzalloc(&client->dev,
@@ -3329,7 +3924,9 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 			sizeof(struct ft5x06_ts_data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
-
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	dev_set_drvdata(&client->dev, data);
+#endif
 	if (pdata->fw_name) {
 		len = strlen(pdata->fw_name);
 		if (len > FT_FW_NAME_MAX_LEN - 1) {
@@ -3372,17 +3969,45 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 	input_set_drvdata(input_dev, data);
 	i2c_set_clientdata(client, data);
 
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	__set_bit(EV_SYN, input_dev->evbit);
+#endif
 	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(EV_ABS, input_dev->evbit);
 	__set_bit(BTN_TOUCH, input_dev->keybit);
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 
 	input_mt_init_slots(input_dev, pdata->num_max_touches, 0);
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	if (pdata->have_key) {
+		dev_info(&data->client->dev, "set key capabilities");
+		for (key_num = 0; key_num < pdata->key_number; key_num++)
+			input_set_capability(input_dev, EV_KEY, pdata->keys[key_num]);
+	}
+
+	input_mt_init_slots(input_dev, pdata->num_max_touches, INPUT_MT_DIRECT);
+#endif
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X, pdata->x_min,
 			     pdata->x_max, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, pdata->y_min,
 			     pdata->y_max, 0, 0);
 
+#ifdef CONFIG_TOUCHSCREEN_FT5336
+	mutex_init(&data->report_mutex);
+	point_num = pdata->max_touch_number;
+	data->pnt_buf_size = point_num * FTS_ONE_TCH_LEN + 3;
+	data->point_buf = devm_kzalloc(&client->dev, data->pnt_buf_size, GFP_KERNEL);
+	if (!data->point_buf) {
+		dev_err(&data->client->dev, "failed to alloc memory for point buf!");
+		return -ENOMEM;
+	}
+
+	data->events = devm_kzalloc(&client->dev, point_num * sizeof(struct ts_event), GFP_KERNEL);
+	if (!data->events) {
+		dev_err(&data->client->dev, "failed to alloc memory for point events!");
+		return -ENOMEM;
+	}
+#endif
 	err = input_register_device(input_dev);
 	if (err) {
 		dev_err(&client->dev, "Input device registration failed\n");
@@ -3532,10 +4157,16 @@ static int ft5x06_ts_probe(struct i2c_client *client,
 		goto free_class_sys;
 	}
 
-	err = device_create_file(&client->dev, &dev_attr_buildid);
+	err = device_create_file(&client->dev, &dev_attr_panel_supplier);
 	if (err) {
 		dev_err(&client->dev, "sys file creation failed\n");
 		goto free_buildid_sys;
+	}
+
+	err = device_create_file(&client->dev, &dev_attr_buildid);
+	if (err) {
+		dev_err(&client->dev, "sys file creation failed\n");
+		goto free_panel_supplier_sys;
 	}
 
 	err = device_create_file(&client->dev, &dev_attr_doreflash);
@@ -3840,6 +4471,8 @@ free_flashprog_sys:
 	device_remove_file(&client->dev, &dev_attr_doreflash);
 free_doreflash_sys:
 	device_remove_file(&client->dev, &dev_attr_buildid);
+free_panel_supplier_sys:
+	device_remove_file(&client->dev, &dev_attr_panel_supplier);
 free_buildid_sys:
 	ft5x06_ts_sysfs_class(data, false);
 free_class_sys:
@@ -3865,8 +4498,10 @@ power_off:
 	else
 		ft5x06_power_on(data, false);
 free_gpio:
-	if (gpio_is_valid(pdata->reset_gpio))
+	if (gpio_is_valid(pdata->reset_gpio)) {
+		gpio_set_value_cansleep(data->pdata->reset_gpio, 0);
 		gpio_free(pdata->reset_gpio);
+	}
 	if (gpio_is_valid(pdata->irq_gpio))
 		gpio_free(pdata->irq_gpio);
 err_gpio_req:
@@ -3920,6 +4555,7 @@ static int ft5x06_ts_remove(struct i2c_client *client)
 	device_remove_file(&client->dev, &dev_attr_drv_irq);
 	device_remove_file(&client->dev, &dev_attr_reset);
 	device_remove_file(&client->dev, &dev_attr_hw_irqstat);
+	device_remove_file(&client->dev, &dev_attr_panel_supplier);
 
 #if defined(CONFIG_FB)
 	if (fb_unregister_client(&data->fb_notif))

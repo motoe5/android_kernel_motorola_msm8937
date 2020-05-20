@@ -936,6 +936,7 @@ struct upgrade_func upgrade_func_ft8006u = {
 	.paramcfgveroff = 0x12004,
 	.pramboot_supported = true,
 	.hid_supported = false,
+	.fts_8006u = true,
 	.upgrade = fts_ft8006u_upgrade,
 	.get_hlic_ver = fts_ft8006u_get_hlic_ver,
 	.lic_upgrade = fts_ft8006u_lic_upgrade,

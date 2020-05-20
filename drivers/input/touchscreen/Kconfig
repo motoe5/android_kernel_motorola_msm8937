@@ -1239,11 +1239,11 @@ config TOUCHSCREEN_SYNAPTICS_DSX_FW_UPDATE_MMI
 	  This enables support for firmware update for Synaptics DSX
 	  touchscreens via the MMI design.
 
-config TOUCHSCREEN_HIMAX_CHIPSET
-	bool "Himax touchpanel CHIPSET"
+config TOUCHSCREEN_HIMAX_MMI
+	bool "Himax MMI touchpanel"
 	depends on I2C
 	help
-	  Say Y here if you have a Himax CHIPSET touchscreen.
+	  Say Y here if you have a Himax MMI touchscreen.
 	  HIMAX controllers are multi touch controllers which can
 	  report 10 touches at a time.
 
@@ -1261,8 +1261,50 @@ config TOUCHSCREEN_NT36xxx
 
          To compile this driver as a module, choose M here: the
          module will be called nvt.
+
+config TOUCHSCREEN_ILITEK
+	bool "Mster touchpanel MSG2856A"
+	depends on I2C
+	help
+	Say Y here if you have a MSG2856A touchscreen.
+
+config TOUCHSCREEN_FT5336
+	bool "touchpanel ft5336"
+	depends on TOUCHSCREEN_FT5X06
+	help
+	Say Y here if you have a ft5336 touchscreen.
+
+config TOUCHSCREEN_ILITEK_CHIPSET
+        tristate "Ilitek touchpanel Ilitek series"
+        depends on I2C
+        help
+          Say Y here if you have a Ilitek ili9881 touchscreen.
+          Ilitek controllers are multi touch controllers which can
+          report 10 touches at a time.
+
+          If unsure, say N.
+
 source "drivers/input/touchscreen/gt9xx/Kconfig"
+source "drivers/input/touchscreen/focaltech_touch/Kconfig"
+
+config TOUCHSCREEN_HIMAX_CHIPSET
+	bool "Himax touchpanel CHIPSET"
+	depends on I2C
+	help
+	  Say Y here if you have a Himax CHIPSET touchscreen.
+	  HIMAX controllers are multi touch controllers which can
+	  report 10 touches at a time.
+
+          If unsure, say N.
+
+if TOUCHSCREEN_HIMAX_CHIPSET
+source "drivers/input/touchscreen/hxchipset/Kconfig"
+endif
 source "drivers/input/touchscreen/gt9xx_mmi/Kconfig"
+if TOUCHSCREEN_HIMAX_MMI
 source "drivers/input/touchscreen/himax_mmi/Kconfig"
+endif
 source "drivers/input/touchscreen/nova_mmi/Kconfig"
+source "drivers/input/touchscreen/ilitek_mmi/Kconfig"
+
 endif

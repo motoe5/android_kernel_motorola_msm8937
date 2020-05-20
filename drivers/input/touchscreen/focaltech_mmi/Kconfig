@@ -70,7 +70,7 @@ config TOUCHSCREEN_FOCALTECH_UPGRADE_8006M_MMI
 	  If unsure, say N.
 
 config TOUCHSCREEN_FOCALTECH_UPGRADE_8006U_MMI
-	bool "Add ft8006U IC support for Focaltech Touchscreen"
+	bool "Add ft8006u IC support for Focaltech Touchscreen"
 	depends on TOUCHSCREEN_FOCALTECH_CORE_MMI
 	select TOUCHSCREEN_FOCALTECH_UPGRADE_MMI
 	help
@@ -88,6 +88,15 @@ config TOUCHSCREEN_FOCALTECH_UPGRADE_8006S_MMI
           Say Y here will
           -Add FT8006S IC upgrade support.
           -Add new Focaltech firmware upgrade code.
+
+          If unsure, say N.
+
+config TOUCHSCREEN_FOCALTECH_UPGRADE_INTERRUPTION_PREVENT
+        bool "enable tp fw upgrade interruption prevent func for Focaltech Touchscreen"
+        depends on TOUCHSCREEN_FOCALTECH_UPGRADE_MMI
+        help
+          Say Y here will
+          -Set tp fw upgrade flag when tp firwmare is upgrading, to prevent potential interruption.
 
           If unsure, say N.
 

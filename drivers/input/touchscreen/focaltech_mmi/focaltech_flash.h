@@ -12,7 +12,6 @@ extern int fts_ctpm_auto_upgrade(struct i2c_client *client,
 
 int fts_ctpm_i2c_hid2std(struct i2c_client *client);
 
-/*******************************************/
 #if defined(CONFIG_TOUCHSCREEN_FOCALTECH_UPGRADE_8006M_MMI) || defined(CONFIG_TOUCHSCREEN_FOCALTECH_UPGRADE_8006U_MMI)
 #include <linux/fs.h>
 #include <linux/vmalloc.h>
@@ -53,8 +52,8 @@ extern struct fts_ts_data *fts_data;
 #define FTS_CMD_START1                      0x55
 #define FTS_CMD_START2                      0xAA
 #define FTS_CMD_READ_ID                     0x90
-#define INTERVAL_READ_REG                   100
-#define TIMEOUT_READ_REG                    1000
+#define INTERVAL_READ_REG                   100  //unit:ms
+#define TIMEOUT_READ_REG                    1000 //unit:ms
 
 #define FTS_REG_IDE_PARA_VER_ID             0xB5
 #define FTS_REG_IDE_PARA_STATUS             0xB6
@@ -172,6 +171,7 @@ struct upgrade_func {
 	u32 paramcfg2off;
 	bool hid_supported;
 	bool pramboot_supported;
+	bool fts_8006u;
 	u8 *pramboot;
 	u32 pb_length;
 	int (*init)(void);
@@ -226,6 +226,7 @@ int fts_pram_ecc_cal(struct i2c_client *client, u32 saddr, u32 len);
 int fts_pram_start(struct i2c_client *client);
 
 int fts_fwupg_do_upgrade(const char *fwname);
+int fts_fwupg_upgrade(struct i2c_client *client, struct fts_upgrade *upg);
 
 int fts_extra_init(struct i2c_client *client, struct input_dev *input_dev, struct ft_ts_platform_data *pdata);
 int fts_extra_exit(void);
