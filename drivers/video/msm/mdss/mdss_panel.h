@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,7 @@
 #include <linux/stringify.h>
 #include <linux/types.h>
 #include <linux/debugfs.h>
+#include "mdss_dsi_panel.h"
 
 #define KHZ_TO_HZ 1000
 
@@ -122,7 +123,7 @@ struct panel_param {
 #define WRITEBACK_PANEL		10	/* Wifi display */
 #define LVDS_PANEL		11	/* LVDS */
 #define EDP_PANEL		12	/* LVDS */
-
+#define SPI_PANEL		13
 #define DSC_PPS_LEN		128
 
 /* HDR propeties count */
@@ -170,6 +171,7 @@ enum {
 	MDSS_PANEL_INTF_DSI,
 	MDSS_PANEL_INTF_EDP,
 	MDSS_PANEL_INTF_HDMI,
+	MDSS_PANEL_INTF_SPI,
 };
 
 enum {
@@ -178,6 +180,13 @@ enum {
 	MDSS_PANEL_POWER_LP1,
 	MDSS_PANEL_POWER_LP2,
 };
+
+enum {
+	MDSS_PANEL_BLANK_BLANK = 0,
+	MDSS_PANEL_BLANK_UNBLANK,
+	MDSS_PANEL_BLANK_LOW_POWER,
+};
+
 
 enum {
 	MDSS_PANEL_LOW_PERSIST_MODE_OFF = 0,
@@ -484,10 +493,17 @@ struct mipi_panel_info {
 	char lp11_init;
 	u32  init_delay;
 	u32  post_init_delay;
+
+	/*delay for panel bl on to avoid splash screen*/
+	u32 panel_bl_delay;
 };
 
 struct edp_panel_info {
 	char frame_rate;	/* fps */
+};
+
+struct spi_panel_info {
+	char frame_rate;
 };
 
 /**
@@ -698,8 +714,11 @@ struct mdss_panel_info {
 	u32 out_format;
 	u32 rst_seq[MDSS_DSI_RST_SEQ_LEN];
 	u32 rst_seq_len;
-	bool rst_disable;        /*add xinjunjie at 20180312*/
+	u32 external_rst_gpio;
+	bool fw_upgrade_interrupt_disable;
+	bool panel_off_rst_disable;
 	bool panel_reg_read_lp_enable;
+	bool rst_disable;        /*add xinjunjie at 20180312*/
 	u32 vic; /* video identification code */
 	struct mdss_rect roi;
 	int pwm_pmic_gpio;
@@ -739,6 +758,7 @@ struct mdss_panel_info {
 	u32 partial_update_roi_merge;
 	struct ion_handle *splash_ihdl;
 	int panel_power_state;
+	int blank_state;
 	int compression_mode;
 
 	uint32_t panel_dead;
@@ -801,6 +821,7 @@ struct mdss_panel_info {
 	struct lcd_panel_info lcdc;
 	struct fbc_panel_info fbc;
 	struct mipi_panel_info mipi;
+	struct spi_panel_info spi;
 	struct lvds_panel_info lvds;
 	struct edp_panel_info edp;
 
@@ -899,6 +920,7 @@ struct mdss_panel_data {
 	struct mdss_panel_data *next;
 
 	int panel_te_gpio;
+	int panel_en_gpio;
 	struct completion te_done;
 };
 
@@ -983,6 +1005,9 @@ static inline u32 mdss_panel_get_framerate(struct mdss_panel_info *panel_info,
 		break;
 	case WRITEBACK_PANEL:
 		frame_rate = DEFAULT_FRAME_RATE;
+		break;
+	case SPI_PANEL:
+		frame_rate = panel_info->spi.frame_rate;
 		break;
 	case DTV_PANEL:
 		if (panel_info->dynamic_fps) {

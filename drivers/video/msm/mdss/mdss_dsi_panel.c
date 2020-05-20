@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -28,6 +28,7 @@
 
 
 #include "mdss_dsi.h"
+#include "mdss_debug.h"
 #ifdef TARGET_HW_MDSS_HDMI
 #include "mdss_dba_utils.h"
 #endif
@@ -269,11 +270,12 @@ static void mdss_dsi_panel_set_idle_mode(struct mdss_panel_data *pdata,
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 						panel_data);
 
-	pr_debug("%s: Idle (%d->%d)\n", __func__, ctrl->idle, enable);
+	pr_info("%s: Idle (%d->%d)\n", __func__, ctrl->idle, enable);
 
 	if (ctrl->idle == enable)
 		return;
 
+	MDSS_XLOG(ctrl->idle, enable);
 	if (enable) {
 		if (ctrl->idle_on_cmds.cmd_cnt) {
 			mdss_dsi_panel_cmds_send(ctrl, &ctrl->idle_on_cmds,
@@ -392,6 +394,7 @@ static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 			rc);
 		goto rst_gpio_err;
 	}
+
 	if (gpio_is_valid(ctrl_pdata->bklt_en_gpio)) {
 		rc = gpio_request(ctrl_pdata->bklt_en_gpio,
 						"bklt_enable");
@@ -510,6 +513,8 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 						__func__);
 					goto exit;
 				}
+				gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+				usleep_range(100, 110);
 			}
 
 			if (pdata->panel_info.rst_seq_len) {
@@ -522,7 +527,20 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 				}
 			}
 
+			if (gpio_is_valid(pinfo->external_rst_gpio)) {
+				rc = gpio_request(pinfo->external_rst_gpio,
+						"external_rst_n");
+				if (rc) {
+					pr_err("request external reset gpio failed, rc=%d\n",
+							rc);
+					goto exit;
+				}
+			}
+
 			for (i = 0; i < pdata->panel_info.rst_seq_len; ++i) {
+				if (gpio_is_valid(pinfo->external_rst_gpio))
+					gpio_set_value(pinfo->external_rst_gpio,
+						pdata->panel_info.rst_seq[i]);
 				gpio_set_value((ctrl_pdata->rst_gpio),
 					pdata->panel_info.rst_seq[i]);
 				if (pdata->panel_info.rst_seq[++i])
@@ -568,8 +586,13 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		}
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio)) {
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
+			usleep_range(100, 110);
 			gpio_free(ctrl_pdata->disp_en_gpio);
 		}
+		if (!pinfo->panel_off_rst_disable)
+			gpio_set_value((ctrl_pdata->rst_gpio), 0);
+		if (gpio_is_valid(pinfo->external_rst_gpio))
+			gpio_free(pinfo->external_rst_gpio);
 		if (!pinfo->rst_disable) {
 			gpio_set_value((ctrl_pdata->rst_gpio), 0);
 			pr_debug("%s:reset gpio down\n", __func__);
@@ -3218,15 +3241,25 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	pinfo->mipi.lp11_init = of_property_read_bool(np,
 					"qcom,mdss-dsi-lp11-init");
-	pinfo->rst_disable = of_property_read_bool(np,
-					"qcom,mdss-dsi-off-reset-disable");
+	pinfo->panel_off_rst_disable = of_property_read_bool(np,
+					"qcom,mdss-panel-off-rst-disable");
+	pinfo->fw_upgrade_interrupt_disable = of_property_read_bool(np,
+					"qcom,mdss-dsi-fw-upgrade-interrupt-disable");
 	pinfo->panel_reg_read_lp_enable = of_property_read_bool(np,
 					"qcom,mdss-panel-reg-read-lp-enable");
+	pinfo->rst_disable = of_property_read_bool(np,
+					"qcom,mdss-dsi-off-reset-disable");
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-init-delay-us", &tmp);
 	pinfo->mipi.init_delay = (!rc ? tmp : 0);
 
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-post-init-delay", &tmp);
 	pinfo->mipi.post_init_delay = (!rc ? tmp : 0);
+
+	pinfo->external_rst_gpio = of_get_named_gpio(np,
+					"qcom,mdss-dsi-external-rst-gpio", 0);
+	if (!gpio_is_valid(pinfo->external_rst_gpio))
+			pr_debug("%s:%d, external rst gpio not specified\n",
+					__func__, __LINE__);
 
 	mdss_dsi_parse_trigger(np, &(pinfo->mipi.mdp_trigger),
 		"qcom,mdss-dsi-mdp-trigger");
@@ -3256,6 +3289,9 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	pinfo->mipi.force_clk_lane_hs = of_property_read_bool(np,
 		"qcom,mdss-dsi-force-clock-lane-hs");
+
+	rc = of_property_read_u32(np, "qcom,mdss-dsi-panel-bl-delay-ms", &tmp);
+	pinfo->mipi.panel_bl_delay = (!rc ? tmp : 0);
 
 	rc = mdss_dsi_parse_panel_features(np, ctrl_pdata);
 	if (rc) {
