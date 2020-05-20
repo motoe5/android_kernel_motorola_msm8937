@@ -62,30 +62,6 @@ static DEFINE_SPINLOCK(rtcdev_lock);
 static struct mutex power_on_alarm_lock;
 
 /**
- * power_on_alarm_empty - return if the Power ON Alarm queue has a node
- *
- */
-int power_on_alarm_empty(void)
-{
-	unsigned long flags;
-	struct timerqueue_node *next;
-	struct alarm_base *base = &alarm_bases[ALARM_POWEROFF_REALTIME];
-
-	if (!base)
-		return -EINVAL;
-
-	spin_lock_irqsave(&base->lock, flags);
-	next = timerqueue_getnext(&base->timerqueue);
-	spin_unlock_irqrestore(&base->lock, flags);
-
-	if (next)
-		return 0;
-
-	/* Power ON Alarm Queue Empty */
-	return 1;
-}
-
-/**
  * set_power_on_alarm - set power on alarm value into rtc register
  *
  * Get the soonest power off alarm timer and set the alarm value into rtc
@@ -152,6 +128,30 @@ disable_alarm:
 	rtc_timer_cancel(rtc, &rtc->aie_timer);
 exit:
 	mutex_unlock(&power_on_alarm_lock);
+}
+
+/**
+ * power_on_alarm_empty - return if the Power ON Alarm queue has a node
+ *
+ */
+int power_on_alarm_empty(void)
+{
+	unsigned long flags;
+	struct timerqueue_node *next;
+	struct alarm_base *base = &alarm_bases[ALARM_POWEROFF_REALTIME];
+
+	if (!base)
+		return -EINVAL;
+
+	spin_lock_irqsave(&base->lock, flags);
+	next = timerqueue_getnext(&base->timerqueue);
+	spin_unlock_irqrestore(&base->lock, flags);
+
+	if (next)
+		return 0;
+
+	/* Power ON Alarm Queue Empty */
+	return 1;
 }
 
 static void alarmtimer_triggered_func(void *p)
@@ -533,6 +533,10 @@ void alarm_init(struct alarm *alarm, enum alarmtimer_type type,
 	alarm->timer.function = alarmtimer_fired;
 	alarm->function = function;
 	alarm->type = type;
+	if (type >= ALARM_NUMTYPE) {
+		/* use ALARM_BOOTTIME as the default */
+		alarm->type = ALARM_BOOTTIME;
+	}
 	alarm->state = ALARMTIMER_STATE_INACTIVE;
 }
 EXPORT_SYMBOL_GPL(alarm_init);
@@ -1003,7 +1007,8 @@ static int alarm_timer_nsleep(const clockid_t which_clock, int flags,
 	/* Convert (if necessary) to absolute time */
 	if (flags != TIMER_ABSTIME) {
 		ktime_t now = alarm_bases[type].gettime();
-		exp = ktime_add(now, exp);
+
+		exp = ktime_add_safe(now, exp);
 	}
 
 	if (alarmtimer_do_nsleep(&alarm, exp))
