@@ -98,6 +98,7 @@
 
 	/delete-node/ eldo2;
 	/delete-node/ uart@78b0000;
+	/delete-node/ uart@7aef000;
 	/delete-node/ i2c@7af5000;
 	/delete-node/ spi@78b7000;
 	/delete-node/ adv_vreg;
@@ -743,7 +744,7 @@
 	qcom,enable-hvdcp-9v;
 	qcom,enable-factory-wa;
 	qcom,enable-charging-limit;
-	qcom,upper-limit-capacity = <80>;
+	qcom,upper-limit-capacity = <70>;
 	qcom,lower-limit-capacity = <60>;
 };
 

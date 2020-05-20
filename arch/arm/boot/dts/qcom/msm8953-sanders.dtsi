@@ -217,6 +217,8 @@
 			focaltech,fw-auto-cal;
 			focaltech,ignore-id-check;
 			focaltech,resume-in-workqueue;
+			focaltech,vendor_ids = <0x02 0x04 0x10>;
+			focaltech,vendor_names = "toptouch", "biel", "djn";
 			config_modifier-names = "charger", "fps";
 			config_modifier-charger {
 				enable-notification;
@@ -628,6 +630,7 @@
 	qcom,lra-res-cal-period = <4>;
 	qcom,correct-lra-drive-freq;
 	qcom,misc-trim-error-rc19p2-clk-reg-present;
+	qcom,brake-pattern = [03 03 03 03];
 };
 
 &blsp1_uart0 {
@@ -817,11 +820,11 @@
 	qcom,usbid-disabled;
 	qcom,usbid-gpio-enabled;
 	qcom,force-aicl-rerun;
-	qcom,auto-voltage-comp-mv = <150>;
+	qcom,auto-voltage-comp-mv = <75>;
 	qcom,enable-hvdcp-9v;
 	qcom,enable-factory-wa;
 	qcom,enable-charging-limit;
-	qcom,upper-limit-capacity = <80>;
+	qcom,upper-limit-capacity = <70>;
 	qcom,lower-limit-capacity = <60>;
 };
 

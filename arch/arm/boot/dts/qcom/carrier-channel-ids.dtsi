@@ -121,7 +121,7 @@
 		"altice",	/* 104 */
 		"vipeu",	/* 105 */
 		"veoneu",	/* 106 */
-		"undefined",	/* 107 */
+		"openeu",	/* 107 */
 		"undefined",	/* 108 */
 		"undefined",	/* 109 */
 		"undefined",	/* 110 */
@@ -168,7 +168,7 @@
 		"fi",		/* 151 */
 		"undefined",	/* 152 */
 		"undefined",	/* 153 */
-		"undefined",	/* 154 */
+		"charter",	/* 154 */
 		"undefined",	/* 155 */
 		"undefined",	/* 156 */
 		"undefined",	/* 157 */
