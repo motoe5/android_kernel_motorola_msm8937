@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -37,6 +37,7 @@
 #define KGSL_PRIORITY_MAX_RB_LEVELS 4
 #define KGSL_MEMSTORE_MAX	(KGSL_MEMSTORE_SIZE / \
 	sizeof(struct kgsl_devmemstore) - 1 - KGSL_PRIORITY_MAX_RB_LEVELS)
+#define KGSL_MAX_CONTEXTS_PER_PROC 200
 
 #define MEMSTORE_RB_OFFSET(rb, field)	\
 	KGSL_MEMSTORE_OFFSET(((rb)->id + KGSL_MEMSTORE_MAX), field)
@@ -168,6 +169,8 @@ struct kgsl_memdesc_ops {
 #define KGSL_MEMDESC_TZ_LOCKED BIT(7)
 /* The memdesc is allocated through contiguous memory */
 #define KGSL_MEMDESC_CONTIG BIT(8)
+/* For global buffers, randomly assign an address from the region */
+#define KGSL_MEMDESC_RANDOM BIT(9)
 
 /**
  * struct kgsl_memdesc - GPU memory object descriptor
