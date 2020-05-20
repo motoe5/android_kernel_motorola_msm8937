@@ -28,6 +28,7 @@
 
 /* enable body stat */
 #define ABOV_TCHCMPSTAT_TCHSTAT1_FLAG   0x0C
+
 /* enable body stat */
 #define ABOV_TCHCMPSTAT_TCHSTAT0_FLAG   0x03
 
