@@ -569,7 +569,11 @@ static noinline void __init split_and_set_pmd(pmd_t *pmd, unsigned long addr,
 	pte = start_pte;
 
 	do {
-		set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
+		if (((unsigned long)_stext <= addr) &&
+			(addr < (unsigned long)__init_end))
+			set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
+		else
+			set_pte(pte, pfn_pte(pfn, PAGE_KERNEL));
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 
@@ -698,7 +702,7 @@ static int __init map_entry_trampoline(void)
 	/* Map only the text into the trampoline page table */
 	memset(tramp_pg_dir, 0, PTRS_PER_PGD * sizeof(pgd_t));
 	__create_mapping(NULL, tramp_pg_dir + pgd_index(TRAMP_VALIAS), pa_start,
-			 TRAMP_VALIAS, PAGE_SIZE, prot, pgd_pgtable_alloc, false);
+		TRAMP_VALIAS, PAGE_SIZE, prot, pgd_pgtable_alloc, false);
 
 	/* Map both the text and data into the kernel page table */
 	__set_fixmap(FIX_ENTRY_TRAMP_TEXT, pa_start, prot);
