@@ -1286,6 +1286,7 @@ static int tz_log_probe(struct platform_device *pdev)
 		goto err;
 
 	tzdbg_register_qsee_log_buf();
+
 	tzlog_bck_check(pdev);
 	return 0;
 err:
