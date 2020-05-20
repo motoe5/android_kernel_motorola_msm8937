@@ -21,10 +21,9 @@ struct usb_mixer_interface {
 	struct usb_ctrlrequest *rc_setup_packet;
 	u8 rc_buffer[6];
 
-	bool disconnected;
-
 	u8 audigy2nx_leds[3];
 	u8 xonar_u1_status;
+	bool disconnected;
 };
 
 #define MAX_CHANNELS	16	/* max logical channels */

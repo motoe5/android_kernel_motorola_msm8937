@@ -257,6 +257,8 @@ void tas2560_enableIRQ(struct tas2560_priv *pTAS2560, bool enable)
 
 		if (gpio_is_valid(pTAS2560->mnIRQGPIO))
 			enable_irq(pTAS2560->mnIRQ);
+		else
+			return;
 
 		schedule_delayed_work(&pTAS2560->irq_work, msecs_to_jiffies(10));
 		pTAS2560->mbIRQEnable = true;
@@ -266,6 +268,8 @@ void tas2560_enableIRQ(struct tas2560_priv *pTAS2560, bool enable)
 
 		if (gpio_is_valid(pTAS2560->mnIRQGPIO))
 			disable_irq_nosync(pTAS2560->mnIRQ);
+		else
+			return;
 		pTAS2560->mbIRQEnable = false;
 	}
 }
@@ -530,6 +534,17 @@ static int tas2560_i2c_probe(struct i2c_client *client,
 		gpio_direction_output(pTAS2560->mnSwitchGPIO, 0);
 	}
 
+	if (gpio_is_valid(pTAS2560->mnSwitchGPIO2)) {
+		nResult = gpio_request(pTAS2560->mnSwitchGPIO2,
+			"TAS2560_EAR_SWITH2");
+		if (nResult) {
+			dev_err(pTAS2560->dev, "%s: Failed to request gpio %d\n",
+				__func__, pTAS2560->mnSwitchGPIO2);
+			nResult = -EINVAL;
+			goto free_gpio;
+		}
+		gpio_direction_output(pTAS2560->mnSwitchGPIO2, 0);
+	}
 	if (gpio_is_valid(pTAS2560->mnIRQGPIO)) {
 		nResult = gpio_request(pTAS2560->mnIRQGPIO, "TAS2560-IRQ");
 		if (nResult < 0) {
@@ -593,6 +608,8 @@ free_gpio:
 			gpio_free(pTAS2560->mnIRQGPIO);
 		if (gpio_is_valid(pTAS2560->mnSwitchGPIO))
 			gpio_free(pTAS2560->mnSwitchGPIO);
+		if (gpio_is_valid(pTAS2560->mnSwitchGPIO2))
+			gpio_free(pTAS2560->mnSwitchGPIO2);
 	}
 
 end:
@@ -621,6 +638,8 @@ static int tas2560_i2c_remove(struct i2c_client *client)
 		gpio_free(pTAS2560->mnIRQGPIO);
 	if (gpio_is_valid(pTAS2560->mnSwitchGPIO))
 		gpio_free(pTAS2560->mnSwitchGPIO);
+	if (gpio_is_valid(pTAS2560->mnSwitchGPIO2))
+		gpio_free(pTAS2560->mnSwitchGPIO2);
 
 	return 0;
 }

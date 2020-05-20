@@ -691,6 +691,10 @@ config SND_SOC_WCD9330
 config SND_SOC_WCD9335
         tristate
 
+config SND_SOC_BG_CODEC
+	tristate
+	default m if MSM_BG_GLINK=y
+
 config SND_SOC_WSA881X_SENSORS
 	tristate
 
@@ -706,6 +710,10 @@ config SND_SOC_WSA881X_ANALOG
 
 config SND_SOC_MSM8X16_WCD
 	tristate
+
+config SND_SOC_DIGITAL_CDC
+	tristate
+	select REGMAP_MMIO
 
 config SND_SOC_WCD9XXX
 	tristate
@@ -932,6 +940,9 @@ config SND_SOC_TPA6130A2
 config SND_SOC_MSM_STUB
 	tristate
 
+config SND_SOC_TFA9874
+	tristate "NXP Semiconductors TFA9874 amplifier"
+	depends on I2C
 
 config SND_SOC_MODS_CODEC_SHIM
 	tristate "shim codec for mods"
