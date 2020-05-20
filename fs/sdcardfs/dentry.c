@@ -52,7 +52,6 @@ static int sdcardfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	 * whether the base obbpath has been changed or not
 	 */
 	if (is_obbpath_invalid(dentry)) {
-		d_drop(dentry);
 		return 0;
 	}
 
@@ -66,7 +65,6 @@ static int sdcardfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	if ((lower_dentry->d_flags & DCACHE_OP_REVALIDATE)) {
 		err = lower_dentry->d_op->d_revalidate(lower_dentry, flags);
 		if (err == 0) {
-			d_drop(dentry);
 			goto out;
 		}
 	}
@@ -74,14 +72,12 @@ static int sdcardfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	spin_lock(&lower_dentry->d_lock);
 	if (d_unhashed(lower_dentry)) {
 		spin_unlock(&lower_dentry->d_lock);
-		d_drop(dentry);
 		err = 0;
 		goto out;
 	}
 	spin_unlock(&lower_dentry->d_lock);
 
 	if (parent_lower_dentry != lower_cur_parent_dentry) {
-		d_drop(dentry);
 		err = 0;
 		goto out;
 	}
@@ -95,7 +91,6 @@ static int sdcardfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	}
 
 	if (!qstr_case_eq(&dentry->d_name, &lower_dentry->d_name)) {
-		__d_drop(dentry);
 		err = 0;
 	}
 
@@ -114,7 +109,6 @@ static int sdcardfs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	if (inode) {
 		data = top_data_get(SDCARDFS_I(inode));
 		if (!data || data->abandoned) {
-			d_drop(dentry);
 			err = 0;
 		}
 		if (data)
@@ -132,6 +126,8 @@ out:
 
 static void sdcardfs_d_release(struct dentry *dentry)
 {
+	if (!dentry || !dentry->d_fsdata)
+		return;
 	/* release and reset the lower paths */
 	if (has_graft_path(dentry))
 		sdcardfs_put_reset_orig_path(dentry);
@@ -193,7 +189,7 @@ void sdcardfs_update_xattr_dirwriter(struct dentry *lower_dentry,
 	struct dentry *dentry, *parent;
 	const char *dir_name[2];
 	int xlen, depth;
-	const char *xattr_feat_name = "user.dwriter";
+	const char *xattr_feat_name = SDCARDFS_XATTR_DWRITER_NAME;
 	const char *xattr_name = "user.dwriter.name";
 	struct dentry *xdentry = NULL, *child = NULL;
 	appid_t app_id = uid_is_app(writer_uid) ?
