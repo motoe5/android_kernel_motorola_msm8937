@@ -74,6 +74,10 @@
 /*--------------------------------------------------------------------------- 
   Preprocessor definitions and constants
   -------------------------------------------------------------------------*/
+
+/* SAP channel change wait time in ms */
+#define HDD_SAP_CHAN_CNG_WAIT_TIME 1500
+
 /** Number of attempts to detect/remove card */
 #define LIBRA_CARD_INSERT_DETECT_MAX_COUNT      5
 #define LIBRA_CARD_REMOVE_DETECT_MAX_COUNT      5
@@ -130,6 +134,8 @@
 #define FW_STATE_WAIT_TIME 500
 #define FW_STATE_RSP_LEN 100
 
+#define WLAN_WAIT_TIME_FEATURE_CAPS 300
+
 /* Amount of time to wait for sme close session callback.
    This value should be larger than the timeout used by WDI to wait for
    a response from WCNSS */
@@ -150,9 +156,6 @@
 
 /** Maximum time(ms) to wait for tdls initiator to start direct communication **/
 #define WAIT_TIME_TDLS_INITIATOR    600
-
-/**Maximum time(ms) to wait for clear packet req to complete **/
-#define PKT_FILTER_TIMEOUT 300
 
 /* Maximum time to get linux regulatory entry settings */
 #ifdef CONFIG_ENABLE_LINUX_REG
@@ -343,13 +346,11 @@ extern spinlock_t hdd_context_lock;
 #define STATS_CONTEXT_MAGIC 0x53544154   //STAT
 #define RSSI_CONTEXT_MAGIC  0x52535349   //RSSI
 #define POWER_CONTEXT_MAGIC 0x504F5752   //POWR
-#define SNR_CONTEXT_MAGIC   0x534E5200   //SNR
 #define BCN_MISS_RATE_CONTEXT_MAGIC 0x513F5753
 #define FW_STATS_CONTEXT_MAGIC  0x5022474E //FW STATS
 #define GET_FRAME_LOG_MAGIC   0x464c4f47   //FLOG
 #define MON_MODE_MSG_MAGIC 0x51436B3A //MON_MODE
 #define ANTENNA_CONTEXT_MAGIC 0x414E544E //ANTN
-#define CLEAR_FILTER_MAGIC 0x52349732 //CLEAR FILTER
 #define MON_MODE_MSG_TIMEOUT 5000
 #define MON_MODE_START 1
 #define MON_MODE_STOP  0
@@ -828,6 +829,8 @@ struct hdd_station_ctx
    /**Connection information*/
    connection_info_t conn_info;
 
+   connection_info_t cache_conn_info;
+
    roaming_info_t roam_info;
 
 #if  defined (WLAN_FEATURE_VOWIFI_11R) || defined (FEATURE_WLAN_ESE) || defined(FEATURE_WLAN_LFR)
@@ -1061,6 +1064,7 @@ typedef struct
 /* Changing value from 10 to 240, as later is
    supported by wcnss */
 #define WLAN_HDD_MAX_MC_ADDR_LIST 240
+#define WLAN_HDD_MAX_FILTER_SLOTS 10
 
 #ifdef WLAN_FEATURE_PACKET_FILTERING
 typedef struct multicast_addr_list
@@ -1068,6 +1072,7 @@ typedef struct multicast_addr_list
    v_U8_t isFilterApplied;
    v_U8_t mc_cnt;
    v_U8_t addr[WLAN_HDD_MAX_MC_ADDR_LIST][ETH_ALEN];
+   v_U8_t filter_index[WLAN_HDD_MAX_MC_ADDR_LIST]; // IKJB42MAIN-1244, Motorola, a19091
 } t_multicast_add_list;
 #endif
 
@@ -1306,7 +1311,15 @@ struct hdd_adapter_s
    hdd_cfg80211_state_t cfg80211State;
 
 #ifdef WLAN_FEATURE_PACKET_FILTERING
+   // IKJB42MAIN-1244, Motorola, a19091 - START
+   v_U32_t user_filter_config;
+   v_U32_t driver_filter_config;
+   v_U8_t ipv6_user_set_map : 4;
+   v_U8_t ipv6_code_set_map : 4;
+   v_SCHAR_t filter_v6_index;
+   // IKJB42MAIN-1244, Motorola, a19091 - END
    t_multicast_add_list mc_addr_list;
+   v_BOOL_t needs_v6_set;
 #endif
 
    //Magic cookie for adapter sanity verification
@@ -1404,8 +1417,7 @@ struct hdd_adapter_s
 #define WLAN_HDD_GET_CFG_STATE_PTR(pAdapter)  (&(pAdapter)->cfg80211State)
 #ifdef FEATURE_WLAN_TDLS
 #define WLAN_HDD_IS_TDLS_SUPPORTED_ADAPTER(pAdapter) \
-        (((WLAN_HDD_INFRA_STATION != pAdapter->device_mode) && \
-        (WLAN_HDD_P2P_CLIENT != pAdapter->device_mode)) ? 0 : 1)
+        ((WLAN_HDD_INFRA_STATION == pAdapter->device_mode) ? 1 : 0)
 #define WLAN_HDD_GET_TDLS_CTX_PTR(pAdapter) \
         ((WLAN_HDD_IS_TDLS_SUPPORTED_ADAPTER(pAdapter)) ? \
         (tdlsCtx_t*)(pAdapter)->sessionCtx.station.pHddTdlsCtx : NULL)
@@ -1479,13 +1491,13 @@ struct hdd_fw_mem_dump_req_ctx {
  * callback type to check fw mem dump request.Called from SVC
  * context and update status in HDD.
  */
-typedef void (*hdd_fw_mem_dump_req_cb)(struct hdd_fw_mem_dump_req_ctx *);
+typedef void (*hdd_fw_mem_dump_req_cb)(void *context);
 
 int memdump_init(void);
 int memdump_deinit(void);
 void wlan_hdd_fw_mem_dump_cb(void *,tAniFwrDumpRsp *);
 int wlan_hdd_fw_mem_dump_req(hdd_context_t * pHddCtx);
-void wlan_hdd_fw_mem_dump_req_cb(struct hdd_fw_mem_dump_req_ctx*);
+void wlan_hdd_fw_mem_dump_req_cb(void *context);
 #ifdef WLAN_FEATURE_LINK_LAYER_STATS
 /**
  * struct hdd_ll_stats_context - hdd link layer stats context
@@ -1555,6 +1567,17 @@ struct hdd_offloaded_packets_ctx
 #endif
 
 /** Adapter stucture definition */
+
+struct hdd_cache_channel_info {
+	int channel_num;
+	eNVChannelEnabledType reg_status;
+	int wiphy_status;
+};
+
+struct hdd_cache_channels {
+	int num_channels;
+	struct hdd_cache_channel_info *channel_info;
+};
 
 struct hdd_context_s
 {
@@ -1760,6 +1783,7 @@ struct hdd_context_s
     */
     vos_timer_t    tx_rx_trafficTmr;
     v_U8_t         drvr_miracast;
+    bool           is_vowifi_enabled;
     v_U8_t         issplitscan_enabled;
     v_U8_t         isTdlsScanCoexistence;
 
@@ -1842,13 +1866,11 @@ struct hdd_context_s
     v_BOOL_t roaming_ini_original;
 
     uint32_t track_arp_ip;
-};
 
-typedef enum  {
-        TP_IND_LOW = 1,
-        TP_IND_MEDIUM,
-        TP_IND_HIGH,
-}TP_IND_TYPE;
+    struct hdd_cache_channels *original_channels;
+    struct mutex cache_channel_lock;
+    bool force_rsne_override;
+};
 
 /* Use to notify the TDLS or BTCOEX is mode enable */
 typedef enum
@@ -1978,9 +2000,9 @@ tANI_U8* wlan_hdd_get_intf_addr(hdd_context_t* pHddCtx);
 void wlan_hdd_release_intf_addr(hdd_context_t* pHddCtx, tANI_U8* releaseAddr);
 v_U8_t hdd_get_operating_channel( hdd_context_t *pHddCtx, device_mode_t mode );
 void wlan_hdd_mon_set_typesubtype( hdd_mon_ctx_t *pMonCtx,int type);
-void hdd_monPostMsgCb(tANI_U32 *magic, struct completion *cmpVar);
-VOS_STATUS wlan_hdd_mon_postMsg(tANI_U32 *magic, struct completion *cmpVar,
-                                hdd_mon_ctx_t *pMonCtx , void* callback);
+void hdd_mon_post_msg_cb(void *context);
+VOS_STATUS wlan_hdd_mon_postMsg(void *cookie, hdd_mon_ctx_t *pMonCtx,
+                                void* callback);
 void hdd_set_conparam ( v_UINT_t newParam );
 tVOS_CON_MODE hdd_get_conparam( void );
 
@@ -2007,6 +2029,7 @@ void wlan_hdd_reset_prob_rspies(hdd_adapter_t* pHostapdAdapter);
 void hdd_prevent_suspend(uint32_t reason);
 void hdd_allow_suspend(uint32_t reason);
 void hdd_prevent_suspend_timeout(v_U32_t timeout, uint32_t reason);
+void hdd_prevent_suspend_after_scan(long hz); //Mot IKHSS7-28961 :Empty scan results
 bool hdd_is_ssr_required(void);
 void hdd_set_ssr_required(e_hdd_ssr_required value);
 void hdd_set_pre_close(hdd_context_t *pHddCtx);
@@ -2302,6 +2325,14 @@ void hdd_restore_roaming(hdd_context_t *hdd_ctx);
 int wlan_hdd_check_and_stop_mon(hdd_adapter_t *sta_adapter, bool wait);
 
 /**
+ * hdd_wait_for_ecsa_complete() - wait if ecsa is in progress
+ * @hdd_ctx: hdd context
+ *
+ * Return: int.
+ */
+int hdd_wait_for_ecsa_complete(hdd_context_t *hdd_ctx);
+
+/**
  * hdd_is_sta_sap_scc_allowed_on_dfs_chan() - check if sta+sap scc allowed on
  * dfs chan
  * @hdd_ctx: pointer to hdd context
@@ -2325,5 +2356,45 @@ hdd_wlan_nla_put_u64(struct sk_buff *skb, int attrtype, u64 value)
 	return nla_put_u64_64bit(skb, attrtype, value, NL80211_ATTR_PAD);
 }
 #endif
+
+/*
+ * hdd_parse_disable_chn_cmd() - Parse the channel list received
+ * in command.
+ * @adapter: pointer to hdd adapter
+ *
+ * @return: 0 on success, Error code on failure
+ */
+int hdd_parse_disable_chan_cmd(hdd_adapter_t *adapter, tANI_U8 *ptr);
+
+/*
+ * hdd_parse_disable_chn_cmd() - get disable channel list
+ * in command.
+ * @hdd_ctx: hdd context
+ * @buf: buffer to hold disable channel list
+ * @buf_len: buffer length
+ *
+ * @return: length of data copied to buf
+ */
+int hdd_get_disable_ch_list(hdd_context_t *hdd_ctx, tANI_U8 *buf,
+                            uint32_t buf_len);
+
+/**
+ * hdd_is_memdump_supported() - to check if memdump feature support
+ *
+ * This function is used to check if memdump feature is supported in
+ * the host driver
+ *
+ * Return: true if supported and false otherwise
+ */
+bool hdd_is_memdump_supported(void);
+
+/**
+ * hdd_is_cli_iface_up() - check if there is any cli iface up
+ * @hdd_ctx: HDD context
+ *
+ * Return: return true if there is any cli iface(STA/P2P_CLI) is up
+ *         else return false
+ */
+bool hdd_is_cli_iface_up(hdd_context_t *hdd_ctx);
 
 #endif    // end #if !defined( WLAN_HDD_MAIN_H )

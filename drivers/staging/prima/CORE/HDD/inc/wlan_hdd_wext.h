@@ -176,7 +176,7 @@ typedef enum
 #define IE_VENDOR_OUI_SIZE   4
 
 /** Maximum Length of WPA/RSN IE */
-#define MAX_WPA_RSN_IE_LEN 40
+#define MAX_WPA_RSN_IE_LEN 255
 
 /** Maximum Number of WEP KEYS */
 #define MAX_WEP_KEYS 4
@@ -343,6 +343,11 @@ typedef struct ccp_freq_chan_map_s{
     v_U32_t chan;
 }hdd_freq_chan_map_t;
 
+struct stats_class_a_ctx {
+    tCsrGlobalClassAStatsInfo class_a_stats;
+};
+
+
 #define wlan_hdd_get_wps_ie_ptr(ie, ie_len) \
     wlan_hdd_get_vendor_oui_ie_ptr(WPS_OUI_TYPE, WPS_OUI_TYPE_SIZE, ie, ie_len)
 
@@ -421,7 +426,7 @@ extern int hdd_priv_get_data(struct iw_point *p_priv_data,
 extern void *mem_alloc_copy_from_user_helper(const void *wrqu_data, size_t len);
 
 void hdd_clearRoamProfileIe( hdd_adapter_t *pAdapter);
-void hdd_GetClassA_statisticsCB(void *pStats, void *pContext);
+void hdd_get_class_a_statistics_cb(void *stats, void *context);
 
 VOS_STATUS wlan_hdd_check_ula_done(hdd_adapter_t *pAdapter);
 
@@ -464,5 +469,11 @@ int hdd_setBand(struct net_device *dev, u8 ui_band);
 int hdd_setBand_helper(struct net_device *dev, const char *command);
 VOS_STATUS wlan_hdd_get_frame_logs(hdd_adapter_t *pAdapter, v_U8_t flag);
 int wlan_hdd_set_proximity(int set_value, tHalHandle hal);
+
+// IKJB42MAIN-1244, Motorola, a19091 - START
+int wlan_hdd_update_v6_filters(hdd_adapter_t *pAdapter, v_U8_t set);
+int wlan_hdd_set_v6_filter(void *pAdapter, v_U8_t set, v_U8_t userSet);
+// IKJB42MAIN-1244, Motorola, a19091 - END
+
 #endif // __WEXT_IW_H__
 
