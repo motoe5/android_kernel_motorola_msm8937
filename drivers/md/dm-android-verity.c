@@ -106,9 +106,7 @@ static inline bool default_verity_key_id(void)
 
 static inline bool is_eng(void)
 {
-	static const char typeeng[]  = "eng";
-
-	return !strncmp(buildvariant, typeeng, sizeof(typeeng));
+	return 1;
 }
 
 static inline bool is_userdebug(void)
@@ -727,9 +725,21 @@ static int android_verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 
 	dev = name_to_dev_t(target_device);
 	if (!dev) {
-		DMERR("no dev found for %s", target_device);
-		handle_error();
-		return -EINVAL;
+		const unsigned int timeout_ms = DM_VERITY_WAIT_DEV_TIMEOUT_MS;
+		unsigned int wait_time_ms = 0;
+
+		DMERR("android_verity_ctr: retry %s\n", target_device);
+		while (driver_probe_done() != 0 ||
+			(dev = name_to_dev_t(target_device)) == 0) {
+			msleep(100);
+			wait_time_ms += 100;
+			if (wait_time_ms > timeout_ms) {
+				DMERR("android_verity_ctr: retry timeout(%dms)\n", timeout_ms);
+				DMERR("no dev found for %s", target_device);
+				handle_error();
+				return -EINVAL;
+			}
+		}
 	}
 
 	if (is_eng())
