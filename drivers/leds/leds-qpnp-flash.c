@@ -1417,7 +1417,7 @@ static void qpnp_flash_led_work(struct work_struct *work)
 	int max_curr_avail_ma = 0;
 	int total_curr_ma = 0;
 	int i;
-	u8 val;
+	u8 val = 0;
 
 	/* Global lock is to synchronize between the flash leds and torch */
 	mutex_lock(&led->flash_led_lock);
@@ -1428,9 +1428,31 @@ static void qpnp_flash_led_work(struct work_struct *work)
 	if (!brightness)
 		goto turn_off;
 
-	if (qpnp_check_fault(led)) {
-		dev_err(&led->spmi_dev->dev, "Open fault detected\n");
-		goto unlock_mutex;
+	if (led->open_fault) {
+		if (flash_node->type == FLASH) {
+			dev_dbg(&led->spmi_dev->dev, "Open fault detected\n");
+			goto unlock_mutex;
+		}
+		/*
+		 * Checking LED fault status again if open_fault has been
+		 * detected previously. Update open_fault status then the
+		 * flash leds could be controlled again if the hardware
+		 * status is recovered.
+		 */
+		rc = spmi_ext_register_readl(led->spmi_dev->ctrl,
+			led->spmi_dev->sid,
+			FLASH_LED_FAULT_STATUS(led->base), &val, 1);
+		if (rc) {
+			dev_err(&led->spmi_dev->dev,
+				"Failed to read out fault status register\n");
+			goto unlock_mutex;
+		}
+
+		led->open_fault = (val & FLASH_LED_OPEN_FAULT_DETECTED);
+		if (qpnp_check_fault(led)) {
+			dev_err(&led->spmi_dev->dev, "Open fault detected\n");
+			goto unlock_mutex;
+		}
 	}
 
 	if (!flash_node->flash_on && flash_node->num_regulators > 0) {
