@@ -686,13 +686,16 @@ static int subsystem_powerup(struct subsys_device *dev, void *data)
 	if (ret < 0) {
 		notify_each_subsys_device(&dev, 1, SUBSYS_POWERUP_FAILURE,
 								NULL);
-		if (!dev->desc->ignore_ssr_failure)
+		if (system_state == SYSTEM_RESTART
+			|| system_state == SYSTEM_POWER_OFF)
+			WARN(1, "SSR aborted: %s, system reboot/shutdown is under way\n",
+				name);
+		else if (!dev->desc->ignore_ssr_failure)
 			panic("[%s:%d]: Powerup error: %s!",
 				current->comm, current->pid, name);
-		else {
+		else
 			pr_err("Powerup failure on %s\n", name);
-			return ret;
-		}
+		return ret;
 	}
 	enable_all_irqs(dev);
 
@@ -1060,7 +1063,10 @@ static void __subsystem_restart_dev(struct subsys_device *dev)
 			__pm_stay_awake(&dev->ssr_wlock);
 			queue_work(ssr_wq, &dev->work);
 		} else {
-			panic("Subsystem %s crashed during SSR!", name);
+			/* MMI_STOPSHIP bringup: prevent kernel from crashing due to modem failure
+			 *panic("Subsystem %s crashed during SSR!", name);
+			 */
+			pr_err("Subsystem %s crashed during SSR!\n", name);
 		}
 	} else
 		WARN(dev->track.state == SUBSYS_OFFLINE,
@@ -1119,13 +1125,16 @@ int subsystem_restart_dev(struct subsys_device *dev)
 
 	switch (dev->restart_level) {
 
+	case RESET_SOC:
 	case RESET_SUBSYS_COUPLED:
 		__subsystem_restart_dev(dev);
 		break;
-	case RESET_SOC:
-		__pm_stay_awake(&dev->ssr_wlock);
-		schedule_work(&dev->device_restart_work);
-		return 0;
+	/* MMI_STOPSHIP - we have to uncomment this when the modem is stabilized
+	* case RESET_SOC:
+	*	__pm_stay_awake(&dev->ssr_wlock);
+	*	schedule_work(&dev->device_restart_work);
+	*	return 0;
+	*/
 	default:
 		panic("subsys-restart: Unknown restart level!\n");
 		break;
