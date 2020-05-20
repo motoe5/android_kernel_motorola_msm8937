@@ -173,7 +173,8 @@ static int sx9310_detect(struct i2c_client *client)
 {
 	s32 returnValue = 0, i;
 	u8 address = SX9310_WHOAMI;
-	u8 value = 0x01;
+	u8 value_9310 = 0x01;
+	u8 value_9311 = 0x02;
 
 	if (client) {
 		for (i = 0; i < 3; i++) {
@@ -181,15 +182,14 @@ static int sx9310_detect(struct i2c_client *client)
 			LOG_INFO("sx9310 read_register for %d time Addr:\
 					0x%x Return: 0x%x\n",
 					i, address, returnValue);
-			if (returnValue >= 0) {
-				if (value == returnValue) {
-					LOG_INFO("sx9310 detect success!\n");
-					return 1;
-				}
+			if (value_9310 == returnValue ||
+					value_9311 == returnValue) {
+				LOG_INFO("sx9310 detect success !\n");
+				return 1;
 			}
 		}
 	}
-	LOG_ERR("sx9310 detect failed!!!\n");
+	LOG_ERR("sx9310 detect failed !!!\n");
 	return 0;
 }
 
@@ -1024,11 +1024,18 @@ static void ps_notify_callback_work(struct work_struct *work)
 	input_top = pDevice->pbuttonInformation->input_top;
 	input_bottom = pDevice->pbuttonInformation->input_bottom;
 
-	LOG_INFO("Usb insert,going to force calibrate\n");
-	ret = write_register(this, SX9310_IRQSTAT_REG, 0xff);
-	if (ret < 0)
-		LOG_ERR(" Usb insert,calibrate cap sensor failed\n");
-
+	mutex_lock(&this->mutex);
+	if (mEnabled) {
+		LOG_INFO("Usb insert,going to force calibrate\n");
+		ret = write_register(this, SX9310_CPS_CTRL0_REG, 0x20);
+		if (ret < 0)
+			LOG_ERR(" Usb insert,disable cap sensor failed\n");
+		msleep(60);
+		ret = write_register(this, SX9310_CPS_CTRL0_REG, 0x2f);
+		if (ret < 0)
+			LOG_ERR(" Usb insert,enabel cap sensor failed\n");
+	}
+	mutex_unlock(&this->mutex);
 	input_report_abs(input_top, ABS_DISTANCE, 0);
 	input_sync(input_top);
 	input_report_abs(input_bottom, ABS_DISTANCE, 0);
@@ -1687,15 +1694,27 @@ static void sx93XX_worker_func(struct work_struct *work)
 void sx93XX_suspend(psx93XX_t this)
 {
 	if (this) {
-		LOG_INFO("sx9310 suspend: disable irq!\n");
+		write_register(this, 0x41, 0x00);
+		if (sx9310_debug_enable)
+			LOG_INFO("sx9310 suspend: disable irq!\n");
 		disable_irq(this->irq);
 	}
 }
 void sx93XX_resume(psx93XX_t this)
 {
 	if (this) {
-		LOG_INFO("sx9310 resume: enable irq!\n");
+		if (sx9310_debug_enable)
+			LOG_INFO("sx9310 resume: enable irq!\n");
+#ifdef USE_THREADED_IRQ
+		mutex_lock(&this->mutex);
+		/* Just in case need to reset any uncaught interrupts */
+		sx93XX_process_interrupt(this, 0);
+		mutex_unlock(&this->mutex);
+#else
+		sx93XX_schedule_work(this, 0);
+#endif
 		enable_irq(this->irq);
+		write_register(this, 0x41, 0x01);
 	}
 }
 
