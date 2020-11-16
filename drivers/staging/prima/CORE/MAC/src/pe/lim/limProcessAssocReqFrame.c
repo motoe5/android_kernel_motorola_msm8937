@@ -1415,15 +1415,15 @@ if (limPopulateMatchingRateSet(pMac,
     // BTAMP: Storing the parsed assoc request in the psessionEntry array
     psessionEntry->parsedAssocReq[pStaDs->assocId] = pAssocReq;
 
-    /* BTAMP: If STA context already exist (ie. updateContext = 1)  
-     * for this STA, then we should delete the old one, and add 
-     * the new STA. This is taken care of in the limDelSta() routine.   
+    /* BTAMP: If STA context already exist (ie. updateContext = 1)
+     * for this STA, then we should delete the old one, and add
+     * the new STA. This is taken care of in the limDelSta() routine.
      *
      * Prior to BTAMP, we were setting this flag so that when
-     * PE receives SME_ASSOC_CNF, and if this flag is set, then 
+     * PE receives SME_ASSOC_CNF, and if this flag is set, then
      * PE shall delete the old station and then add. But now in
      * BTAMP, we're directly adding station before waiting for
-     * SME_ASSOC_CNF, so we can do this now.  
+     * SME_ASSOC_CNF, so we can do this now.
      */
     if (!updateContext)
     {
@@ -1438,13 +1438,23 @@ if (limPopulateMatchingRateSet(pMac,
                                   true, pStaDs->mlmStaContext.authType, pStaDs->assocId, true,
                                   (tSirResultCodes) eSIR_MAC_UNSPEC_FAILURE_STATUS, psessionEntry);
 
-            pAssocReq = psessionEntry->parsedAssocReq[pStaDs->assocId];
-            goto error;
-        }
-    }
-    else
-    {
-        pStaDs->mlmStaContext.updateContext = 1;
+            #ifdef WLAN_FEATURE_SAE
+                if (akm_type == ANI_AKM_TYPE_SAE) {
+                    if (eSIR_SUCCESS != (status =
+                        lim_check_sae_pmf_cap(psessionEntry, &Dot11fIERSN))) {
+                        /* Reject pmf disable SAE STA */
+                        limLog(pMac, LOGW, FL("Rejecting Re/Assoc req from STA:"
+                                MAC_ADDRESS_STR), MAC_ADDR_ARRAY(pHdr->sa));
+                        limSendAssocRspMgmtFrame(
+                                    pMac,
+                                    status,
+                                    1,
+                                    pHdr->sa,
+                                    subType, 0,psessionEntry, NULL);
+                        goto error;
+                    }
+                }
+            #endif
 
         mlmPrevState = pStaDs->mlmStaContext.mlmState;
 
