@@ -2183,6 +2183,9 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 		memcpy(msm8952_tomtom_dai_links + len2,
 			msm8952_tdm_fe_dai, sizeof(msm8952_tdm_fe_dai));
 		memcpy(msm8952_tomtom_dai_links + len3,
+			msm8952_common_misc_fe_dai,
+			sizeof(msm8952_common_misc_fe_dai));
+		memcpy(msm8952_tomtom_dai_links + len4,
 			msm8952_common_be_dai, sizeof(msm8952_common_be_dai));
 		memcpy(msm8952_tomtom_dai_links + len4,
 			msm8952_tomtom_be_dai, sizeof(msm8952_tomtom_be_dai));
@@ -2214,6 +2217,9 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 		memcpy(msm8952_tasha_dai_links + len2,
 			msm8952_tdm_fe_dai, sizeof(msm8952_tdm_fe_dai));
 		memcpy(msm8952_tasha_dai_links + len3,
+			msm8952_common_misc_fe_dai,
+			sizeof(msm8952_common_misc_fe_dai));
+		memcpy(msm8952_tasha_dai_links + len4,
 			msm8952_common_be_dai, sizeof(msm8952_common_be_dai));
 		memcpy(msm8952_tasha_dai_links + len4,
 			msm8952_tasha_be_dai, sizeof(msm8952_tasha_be_dai));
@@ -2281,37 +2287,30 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 	}
 #endif
 
-	if (of_property_read_bool(dev->of_node, "qcom,hdmi-dba-codec-rx")) {
-		if (!albus_hw) {
-			dev_dbg(dev, "%s(): hdmi dba audio present\n",
+	if (msm8952_dai_links) {
+		if (of_property_read_bool(dev->of_node,
+				"qcom,hdmi-dba-codec-rx")) {
+			dev_dbg(dev, "%s(): hdmi dba audio support present\n",
 				__func__);
-			memcpy(msm8952_dai_links + len5,
-			       msm8952_hdmi_dba_dai_link,
-			       sizeof(msm8952_hdmi_dba_dai_link));
-			len5 += ARRAY_SIZE(msm8952_hdmi_dba_dai_link);
+			memcpy(msm8952_dai_links + len6,
+				msm8952_hdmi_dba_dai_link,
+				sizeof(msm8952_hdmi_dba_dai_link));
+			len6 += ARRAY_SIZE(msm8952_hdmi_dba_dai_link);
 		} else {
-			const char *dba_cpu_dai_name;
-			dev_dbg(dev, "%s(): albus hdmi dba audio present\n",
-				__func__);
-			ret = of_property_read_string(dev->of_node,
-				"qcom,dba_cpu_dai_name", &dba_cpu_dai_name);
-			if (of_property_read_bool(dev->of_node, "qcom,ali-audio")) {
-				if (ret == 0)
-					msm8952_ali_hdmi_dba_dai_link[0].cpu_dai_name =
-						dba_cpu_dai_name;
-				memcpy(msm8952_dai_links + len5,
-						msm8952_ali_hdmi_dba_dai_link,
-						sizeof(msm8952_ali_hdmi_dba_dai_link));
-				len5 += ARRAY_SIZE(msm8952_ali_hdmi_dba_dai_link);
-			} else { /* albus */
-				if (ret == 0)
-					msm8952_albus_hdmi_dba_dai_link[0].cpu_dai_name =
-						dba_cpu_dai_name;
-				memcpy(msm8952_dai_links + len5,
-						msm8952_albus_hdmi_dba_dai_link,
-						sizeof(msm8952_albus_hdmi_dba_dai_link));
-				len5 += ARRAY_SIZE(msm8952_albus_hdmi_dba_dai_link);
-			}
+			dev_dbg(dev, "%s(): No hdmi dba present, add quin dai\n",
+					__func__);
+			memcpy(msm8952_dai_links + len6, msm8952_quin_dai_link,
+				sizeof(msm8952_quin_dai_link));
+			len6 += ARRAY_SIZE(msm8952_quin_dai_link);
+		}
+		if (of_property_read_bool(dev->of_node,
+				"qcom,tdm-audio-intf")) {
+			dev_dbg(dev, "%s(): TDM support present\n",
+					__func__);
+			memcpy(msm8952_dai_links + len6,
+				msm8952_tdm_be_dai_link,
+				sizeof(msm8952_tdm_be_dai_link));
+			len6 += ARRAY_SIZE(msm8952_tdm_be_dai_link);
 		}
 	} else {
 		if (!albus_hw) {
@@ -2328,7 +2327,7 @@ struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 		memcpy(msm8952_dai_links + len5, msm8952_tdm_be_dai_link,
 			sizeof(msm8952_tdm_be_dai_link));
 		len5 += ARRAY_SIZE(msm8952_tdm_be_dai_link);
-	}	
+	}
 	if (of_property_read_bool(dev->of_node, "qcom,afe-rxtx-lb")) {
 		dev_dbg(dev, "%s(): AFE RX to TX loopback supported\n",
 				__func__);
