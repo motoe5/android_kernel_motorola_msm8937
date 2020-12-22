@@ -72,6 +72,11 @@ struct page_info {
 	struct list_head list;
 };
 
+static int ion_heap_is_system_heap_type(enum ion_heap_type type)
+{
+	return type == ((enum ion_heap_type)ION_HEAP_TYPE_SYSTEM);
+}
+
 static struct page *alloc_buffer_page(struct ion_system_heap *heap,
 				      struct ion_buffer *buffer,
 				      unsigned long order,
