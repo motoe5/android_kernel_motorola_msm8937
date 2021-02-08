@@ -1383,10 +1383,10 @@ static ssize_t gt91xx_config_write_proc(struct file *filp,
 	s32 ret = 0;
 	struct goodix_ts_data *ts = i2c_get_clientdata(i2c_connect_client);
 
-	dev_dbg(&ts->client->dev, "write count %d\n", count);
+	dev_dbg(&ts->client->dev, "write count %zu\n", count);
 
 	if (count > GTP_CONFIG_MAX_LENGTH) {
-		dev_err(&ts->client->dev, "size not match [%d:%d]\n",
+		dev_err(&ts->client->dev, "size not match [%d:%zu]\n",
 				GTP_CONFIG_MAX_LENGTH, count);
 		return -EFAULT;
 	}
@@ -1550,18 +1550,18 @@ static ssize_t gtp_doreflash_store(struct device *dev,
 	mutex_lock(&ts->input_dev->mutex);
 	gtp_irq_control_enable(ts, false);
 	ts->fw_loading = true;
-	/*if (config_enabled(CONFIG_GT9XX_TOUCHPANEL_UPDATE)) {*/
-	retval = gup_update_proc(update_file_name);
-	if (retval == FAIL)
-		dev_err(&ts->client->dev,
-				"Fail to update GTP firmware.\n");
-	else {
-		retval = gtp_read_version(ts->client,
-				&ts->version_info, ts->product_id);
-		if (retval < 0)
-			dev_err(&ts->client->dev, "Update version failed.");
+	if (config_enabled(CONFIG_GT9XX_TOUCHPANEL_UPDATE)) {
+		retval = gup_update_proc(update_file_name);
+		if (retval == FAIL)
+			dev_err(&ts->client->dev,
+					"Fail to update GTP firmware.\n");
+		else {
+			retval = gtp_read_version(ts->client,
+					&ts->version_info, ts->product_id);
+			if (retval < 0)
+				dev_err(&ts->client->dev, "Update version failed.");
+		}
 	}
-	/*}*/
 	ts->fw_loading = false;
 	gtp_irq_control_enable(ts, true);
 	mutex_unlock(&ts->input_dev->mutex);
@@ -2638,11 +2638,11 @@ static int goodix_ts_probe(struct i2c_client *client,
 	if (pdata->esd_protect)
 		gtp_esd_switch(client, SWITCH_ON);
 
-	if (ts->pdata->auto_update) {
+/*	if (ts->pdata->auto_update) {
 		ret = gup_init_update_proc(ts);
 		if (ret < 0)
 			dev_err(&client->dev, "Create update thread error.");
-	}
+	} */
 
 	ret = gtp_request_input_dev(ts);
 	if (ret < 0) {
@@ -2790,8 +2790,6 @@ static int goodix_ts_probe(struct i2c_client *client,
 		dev_dbg(&client->dev, "create sys hw_irqstat  success\n");
 	}
 
-	if (pdata->create_wr_node)
-		init_wr_node(client);
 	/* probe init finished */
 	ts->init_done = true;
 	return 0;
@@ -2842,76 +2840,6 @@ exit_free_client_data:
 	return ret;
 }
 
-
-/*******************************************************
-Function:
-	Goodix touchscreen driver release function.
-Input:
-	client: i2c device struct.
-Output:
-	Executive outcomes. 0---succeed.
-*******************************************************/
-static int goodix_ts_remove(struct i2c_client *client)
-{
-	struct goodix_ts_data *ts = i2c_get_clientdata(client);
-
-	GTP_DEBUG_FUNC();
-
-	gtp_unregister_powermanger(ts);
-
-	if (ts->charger_detection_enabled)
-		power_supply_unreg_notifier(&ts->ps_notif);
-#if defined(CONFIG_FB)
-	if (fb_unregister_client(&ts->notifier))
-		dev_err(&client->dev,
-				"Error occurred while unregistering fb_notifer.\n");
-#endif
-
-	remove_proc_entry(GT91XX_CONFIG_PROC_FILE, gt91xx_config_proc);
-	goodix_ts_sysfs_class(ts, false);
-	device_remove_file(&client->dev, &dev_attr_poweron);
-	device_remove_file(&client->dev, &dev_attr_productinfo);
-	device_remove_file(&client->dev, &dev_attr_forcereflash);
-	device_remove_file(&client->dev, &dev_attr_flashprog);
-	device_remove_file(&client->dev, &dev_attr_doreflash);
-	device_remove_file(&client->dev, &dev_attr_buildid);
-	device_remove_file(&client->dev, &dev_attr_drv_irq);
-	device_remove_file(&client->dev, &dev_attr_reset);
-
-	mutex_destroy(&ts->lock);
-
-	if (ts->pdata->create_wr_node)
-		uninit_wr_node();
-
-	if (ts->pdata->esd_protect)
-		destroy_workqueue(gtp_esd_check_workqueue);
-
-	if (ts) {
-		if (ts->use_irq) {
-			GTP_GPIO_AS_INPUT(ts->pdata->irq_gpio);
-			GTP_GPIO_FREE(ts->pdata->irq_gpio);
-			free_irq(client->irq, ts);
-		} else {
-			hrtimer_cancel(&ts->timer);
-		}
-	}
-
-	if (gpio_is_valid(ts->pdata->rst_gpio))
-		gpio_free(ts->pdata->rst_gpio);
-
-	if (gpio_is_valid(ts->pdata->irq_gpio))
-		gpio_free(ts->pdata->irq_gpio);
-
-	goodix_power_off(ts);
-	goodix_power_deinit(ts);
-
-	dev_info(&client->dev, "GTP driver removing...");
-	i2c_set_clientdata(client, NULL);
-	input_unregister_device(ts->input_dev);
-	kfree(ts);
-
-	return 0;
-}
 
 /*******************************************************
 Function:
@@ -3555,7 +3483,6 @@ static const struct i2c_device_id goodix_ts_id[] = {
 
 static struct i2c_driver goodix_ts_driver = {
 	.probe		= goodix_ts_probe,
-	.remove		= goodix_ts_remove,
 	.id_table	= goodix_ts_id,
 	.shutdown	= goodix_ts_shutdown,
 	.driver = {
@@ -3609,7 +3536,3 @@ static void __exit goodix_ts_exit(void)
 
 module_init(goodix_ts_init);
 module_exit(goodix_ts_exit);
-
-MODULE_DESCRIPTION("GTP MMI Series Driver");
-MODULE_LICENSE("GPL V2");
-
