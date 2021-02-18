@@ -90,7 +90,6 @@ qcom,mdss-dsi-hfp-power-mode;
 qcom,mdss-panel-off-rst-disable;
 qcom,mdss-dsi-fw-upgrade-interrupt-disable;
 qcom,mdss-dsi-off-reset-disable;
-qcom,mdss-dsi-fw-upgrade-interrupt-disable;
 qcom,mdss-dsi-lp11-init;
 qcom,mdss-dsi-tx-eot-append;
 qcom,mdss-dsi-dma-trigger = "trigger_sw";
