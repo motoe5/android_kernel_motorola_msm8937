@@ -13157,7 +13157,7 @@ static s32 drv_self_parse_packet(u8 *p_packet, u16 n_length,
                     szY[i] = p_info->tPoint[i].n_y;
                 }
 
-                if (/*(p_info->n_finger_num == 1)&& */ (nPrevTouchNum == 2)) {
+                if (/*(p_info->n_finger_num == 1)&& */ (nPrevTouchNum = 2)) {
                     if (drv_point_distance
                         (szX[0], szY[0], szPrevX[0],
                          szPrevY[0]) > drv_point_distance(szX[0], szY[0],
@@ -13421,7 +13421,7 @@ static s32 drv_self_parse_packet(u8 *p_packet, u16 n_length,
                     szY[i] = p_info->tPoint[i].n_y;
                 }
 
-                if (/*(p_info->n_finger_num == 1)&& */ (nPrevTouchNum == 2)) {
+                if (/*(p_info->n_finger_num == 1)&& */ (nPrevTouchNum = 2)) {
                     if (drv_point_distance
                         (szX[0], szY[0], szPrevX[0],
                          szPrevY[0]) > drv_point_distance(szX[0], szY[0],
@@ -15588,7 +15588,7 @@ static s32 drv_create_procfs_dir_entry(void)
 
     /* create a kset with the name of "kset_example" which is located under /sys/kernel/ */
     g_touch_k_set = kset_create_and_add("kset_example", NULL, kernel_kobj);
-    if (!g_touch_k_set != 0) {
+    if (g_touch_k_set != 0) {
         DBG(&g_i2c_client->dev,
             "*** kset_create_and_add() failed, n_ret_val = %d ***\n", n_ret_val);
 
@@ -15596,7 +15596,7 @@ static s32 drv_create_procfs_dir_entry(void)
     }
 
     g_touch_k_obj = kobject_create();
-    if (!g_touch_k_obj != 0) {
+    if (g_touch_k_obj != 0) {
         DBG(&g_i2c_client->dev,
             "*** kobject_create() failed, n_ret_val = %d ***\n", n_ret_val);
 
